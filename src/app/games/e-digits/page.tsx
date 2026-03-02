@@ -153,11 +153,22 @@ export default function EDigitsGame() {
 
                 <div className="font-mono text-xl sm:text-2xl tracking-wider text-white break-all leading-relaxed">
                   <span className="text-purple-300">2.</span>
-                  {mode === 'practice' && revealedDigits.length > 0 && (
-                    <span className="text-gray-500">{revealedDigits}</span>
-                  )}
-                  {enteredDigits.length > 0 && (
-                    <span className="text-green-400">{enteredDigits}</span>
+                  {mode === 'practice' && gameState.practiceRevealedCount > 0 ? (
+                    <>
+                      {/* Entered digits shown in green (overlap with revealed) */}
+                      {gameState.currentIndex > 0 && (
+                        <span className="text-green-400">{E_DIGITS.slice(0, gameState.currentIndex)}</span>
+                      )}
+                      {/* Remaining revealed digits in gray */}
+                      {gameState.currentIndex < gameState.practiceRevealedCount && (
+                        <span className="text-gray-500">{E_DIGITS.slice(gameState.currentIndex, gameState.practiceRevealedCount)}</span>
+                      )}
+                    </>
+                  ) : (
+                    /* Main mode or no revealed digits - just show entered */
+                    enteredDigits.length > 0 && (
+                      <span className="text-green-400">{enteredDigits}</span>
+                    )
                   )}
                   <span className="animate-pulse">|</span>
                 </div>
