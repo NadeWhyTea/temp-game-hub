@@ -21,6 +21,8 @@ export default function EDigitsGame() {
   const [personalBest, setPersonalBest] = useState(0);
   const [practiceRevealed, setPracticeRevealed] = useState(0);
   const [showModeSelect, setShowModeSelect] = useState(true);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [practiceWrongDigit, setPracticeWrongDigit] = useState<string | null>(null);
 
   useEffect(() => {
     setPersonalBest(getPersonalBestForMode(mode));
@@ -36,13 +38,21 @@ export default function EDigitsGame() {
 
   const handleKeyPress = useCallback(
     (e: KeyboardEvent) => {
-      if (gameState.isGameOver || showModeSelect) return;
+      if (gameState.isGameOver || showModeSelect || isInputFocused) return;
 
       if (e.key >= "0" && e.key <= "9") {
+        if (mode === 'practice') {
+          const expectedDigit = E_DIGITS[gameState.currentIndex];
+          if (e.key !== expectedDigit) {
+            setPracticeWrongDigit(e.key);
+            return;
+          }
+          setPracticeWrongDigit(null);
+        }
         setGameState((prev) => validateDigit(prev, e.key));
       }
     },
-    [gameState.isGameOver, showModeSelect]
+    [gameState.isGameOver, showModeSelect, isInputFocused, mode, gameState.currentIndex]
   );
 
   useEffect(() => {
@@ -95,30 +105,7 @@ export default function EDigitsGame() {
 
               <div className="p-6 bg-white/10 rounded-xl">
                 <h3 className="text-xl font-bold text-white mb-2">Practice Mode</h3>
-                <p className="text-gray-300 mb-4">Learn with revealed digits. Type how many digits to see.</p>
-                
-                <div className="mb-4 flex items-center gap-3">
-                  <label className="text-sm text-gray-400">Show</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="999"
-                    value={practiceRevealed}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value) || 0;
-                      setPracticeRevealed(Math.max(0, Math.min(999, val)));
-                    }}
-                    className="w-20 px-3 py-2 bg-black/30 border border-gray-600 rounded-lg text-white text-center font-mono focus:outline-none focus:border-purple-500"
-                  />
-                  <label className="text-sm text-gray-400">digits</label>
-                </div>
-
-                {practiceRevealed > 0 && (
-                  <div className="mb-4 p-3 bg-black/30 rounded-lg font-mono text-sm text-gray-400 break-all max-h-32 overflow-y-auto">
-                    <span className="text-purple-300">2.</span>
-                    <span className="text-white">{revealedDigits.slice(0, practiceRevealed)}</span>
-                  </div>
-                )}
+                <p className="text-gray-300 mb-4">Learn with revealed digits. Adjust how many digits to see while playing.</p>
 
                 <button
                   onClick={() => startGame('practice')}
@@ -181,11 +168,13 @@ export default function EDigitsGame() {
                   </p>
                 )}
 
-                {mode === 'practice' && !gameState.isGameOver && (
+                {mode === 'practice' && (
                   <div className="mt-6 flex items-center justify-center gap-3 p-3 bg-black/20 rounded-lg">
                     <span className="text-sm text-gray-400">Show</span>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       min="0"
                       max="999"
                       value={gameState.practiceRevealedCount}
@@ -193,6 +182,8 @@ export default function EDigitsGame() {
                         const val = parseInt(e.target.value) || 0;
                         setGameState(prev => updatePracticeRevealedCount(prev, val));
                       }}
+                      onFocus={() => setIsInputFocused(true)}
+                      onBlur={() => setIsInputFocused(false)}
                       className="w-20 px-3 py-2 bg-black/30 border border-gray-600 rounded-lg text-white text-center font-mono focus:outline-none focus:border-purple-500"
                     />
                     <span className="text-sm text-gray-400">digits</span>
@@ -201,7 +192,7 @@ export default function EDigitsGame() {
               </div>
             </div>
 
-            {gameState.isGameOver && (
+            {mode === 'main' && gameState.isGameOver && (
               <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-6 text-center mb-6">
                 {gameState.isWon ? (
                   <>
@@ -235,12 +226,30 @@ export default function EDigitsGame() {
               </div>
             )}
 
+            {mode === 'practice' && practiceWrongDigit && (
+              <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4 text-center mb-6">
+                <p className="text-gray-300">
+                  You entered{" "}
+                  <span className="font-mono text-red-300 text-xl">
+                    {practiceWrongDigit}
+                  </span>{" "}
+                  but should have entered{" "}
+                  <span className="font-mono text-green-300 text-xl">
+                    {E_DIGITS[gameState.currentIndex]}
+                  </span>
+                </p>
+                <p className="text-sm text-gray-400 mt-2">
+                  Keep practicing! Try again.
+                </p>
+              </div>
+            )}
+
             <div className="flex gap-4 justify-center">
               <button
                 onClick={resetGame}
                 className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-lg transition-colors"
               >
-                {gameState.isGameOver ? "Play Again" : "Change Mode"}
+                {mode === 'main' && gameState.isGameOver ? "Play Again" : "Change Mode"}
               </button>
             </div>
           </>
