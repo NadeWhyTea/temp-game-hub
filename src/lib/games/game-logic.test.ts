@@ -8,6 +8,14 @@ describe('e-digits game logic', () => {
     expect(game.isGameOver).toBe(false)
     expect(game.isWon).toBe(false)
     expect(game.wrongDigit).toBe(null)
+    expect(game.mode).toBe('main')
+    expect(game.practiceRevealedCount).toBe(0)
+  })
+
+  it('should create a practice game with revealed count', () => {
+    const game = createGame('practice', 10)
+    expect(game.mode).toBe('practice')
+    expect(game.practiceRevealedCount).toBe(10)
   })
 
   it('should accept correct first digit (7)', () => {

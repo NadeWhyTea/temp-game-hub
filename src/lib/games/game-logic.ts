@@ -1,19 +1,25 @@
 import { E_DIGITS } from './e-digits'
 export { E_DIGITS }
 
+export type GameMode = 'main' | 'practice'
+
 export interface GameState {
   currentIndex: number
   isGameOver: boolean
   isWon: boolean
   wrongDigit: string | null
+  mode: GameMode
+  practiceRevealedCount: number
 }
 
-export function createGame(): GameState {
+export function createGame(mode: GameMode = 'main', practiceRevealedCount: number = 0): GameState {
   return {
     currentIndex: 0,
     isGameOver: false,
     isWon: false,
     wrongDigit: null,
+    mode,
+    practiceRevealedCount,
   }
 }
 
@@ -70,4 +76,24 @@ export function getDisplayDigits(gameState: GameState, windowSize: number = 30):
 export function getCursorPosition(gameState: GameState, windowSize: number = 30): number {
   const start = Math.max(0, gameState.currentIndex - Math.floor(windowSize / 2))
   return gameState.currentIndex - start
+}
+
+export function getRevealedDigits(count: number): string {
+  return E_DIGITS.slice(0, count)
+}
+
+export function getPersonalBestForMode(mode: GameMode): number {
+  if (typeof window === 'undefined') return 0
+  const key = mode === 'main' ? 'e-digits-best' : 'e-digits-best-practice'
+  const stored = localStorage.getItem(key)
+  return stored ? parseInt(stored, 10) : 0
+}
+
+export function savePersonalBestForMode(score: number, mode: GameMode): void {
+  if (typeof window === 'undefined') return
+  const key = mode === 'main' ? 'e-digits-best' : 'e-digits-best-practice'
+  const current = getPersonalBestForMode(mode)
+  if (score > current) {
+    localStorage.setItem(key, score.toString())
+  }
 }
