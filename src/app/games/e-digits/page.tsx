@@ -9,6 +9,7 @@ import {
   getPersonalBestForMode,
   savePersonalBestForMode,
   getRevealedDigits,
+  updatePracticeRevealedCount,
   E_DIGITS,
   GameState,
   GameMode,
@@ -178,6 +179,24 @@ export default function EDigitsGame() {
                   <p className="text-sm text-yellow-400 mt-4">
                     You've entered all revealed digits. Continue from memory!
                   </p>
+                )}
+
+                {mode === 'practice' && !gameState.isGameOver && (
+                  <div className="mt-6 flex items-center justify-center gap-3 p-3 bg-black/20 rounded-lg">
+                    <span className="text-sm text-gray-400">Show</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="999"
+                      value={gameState.practiceRevealedCount}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        setGameState(prev => updatePracticeRevealedCount(prev, val));
+                      }}
+                      className="w-20 px-3 py-2 bg-black/30 border border-gray-600 rounded-lg text-white text-center font-mono focus:outline-none focus:border-purple-500"
+                    />
+                    <span className="text-sm text-gray-400">digits</span>
+                  </div>
                 )}
               </div>
             </div>

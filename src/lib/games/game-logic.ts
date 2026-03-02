@@ -97,3 +97,10 @@ export function savePersonalBestForMode(score: number, mode: GameMode): void {
     localStorage.setItem(key, score.toString())
   }
 }
+
+export function updatePracticeRevealedCount(gameState: GameState, count: number): GameState {
+  return {
+    ...gameState,
+    practiceRevealedCount: Math.max(0, Math.min(999, count)),
+  }
+}
