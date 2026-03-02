@@ -94,29 +94,26 @@ export default function EDigitsGame() {
 
               <div className="p-6 bg-white/10 rounded-xl">
                 <h3 className="text-xl font-bold text-white mb-2">Practice Mode</h3>
-                <p className="text-gray-300 mb-4">Learn with revealed digits. Choose how many digits to see ahead of time.</p>
+                <p className="text-gray-300 mb-4">Learn with revealed digits. Type how many digits to see.</p>
                 
-                <div className="mb-4">
-                  <label className="text-sm text-gray-400 mb-2 block">
-                    Reveal {practiceRevealed} digits
-                  </label>
+                <div className="mb-4 flex items-center gap-3">
+                  <label className="text-sm text-gray-400">Show</label>
                   <input
-                    type="range"
+                    type="number"
                     min="0"
-                    max="100"
+                    max="999"
                     value={practiceRevealed}
-                    onChange={(e) => setPracticeRevealed(parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 0;
+                      setPracticeRevealed(Math.max(0, Math.min(999, val)));
+                    }}
+                    className="w-20 px-3 py-2 bg-black/30 border border-gray-600 rounded-lg text-white text-center font-mono focus:outline-none focus:border-purple-500"
                   />
-                  <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>0</span>
-                    <span>50</span>
-                    <span>100</span>
-                  </div>
+                  <label className="text-sm text-gray-400">digits</label>
                 </div>
 
                 {practiceRevealed > 0 && (
-                  <div className="mb-4 p-3 bg-black/30 rounded-lg font-mono text-sm text-gray-400 break-all">
+                  <div className="mb-4 p-3 bg-black/30 rounded-lg font-mono text-sm text-gray-400 break-all max-h-32 overflow-y-auto">
                     <span className="text-purple-300">2.</span>
                     <span className="text-white">{revealedDigits.slice(0, practiceRevealed)}</span>
                   </div>
