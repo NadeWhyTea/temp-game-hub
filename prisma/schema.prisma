@@ -1,0 +1,17 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model LeaderboardEntry {
+  id        String   @id @default(cuid())
+  game      String
+  playerName String
+  score     Int
+  createdAt DateTime @default(now())
+
+  @@index([game, score])
+}
