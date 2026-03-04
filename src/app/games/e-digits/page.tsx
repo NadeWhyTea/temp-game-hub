@@ -2,18 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import {
-  createGame,
-  validateDigit,
-  getScore,
-  getPersonalBestForMode,
-  savePersonalBestForMode,
-  getRevealedDigits,
-  updatePracticeRevealedCount,
-  E_DIGITS,
-  GameState,
-  GameMode,
-} from "@/lib/games/game-logic";
+import { createGame, validateDigit, getScore, getPersonalBestForMode, savePersonalBestForMode, getRevealedDigits, updatePracticeRevealedCount, E_DIGITS, GameState, GameMode } from "@/lib/games/game-logic";
 
 export default function EDigitsGame() {
   const [mode, setMode] = useState<GameMode>('main');
@@ -129,7 +118,7 @@ export default function EDigitsGame() {
 
             <div className="text-center mb-8">
               <p className="text-gray-300 mb-2">
-                Type the digits of e (Euler's number) one at a time.
+                Type the digits of e (Euler&apos;s number) one at a time.
               </p>
               <p className="text-sm text-gray-400">
                 Starts with <span className="font-mono text-purple-300">2.</span> — you begin with the first digit after the decimal.
@@ -175,7 +164,7 @@ export default function EDigitsGame() {
 
                 {mode === 'practice' && gameState.currentIndex >= gameState.practiceRevealedCount && (
                   <p className="text-sm text-yellow-400 mt-4">
-                    You've entered all revealed digits. Continue from memory!
+                    You&apos;ve entered all revealed digits. Continue from memory!
                   </p>
                 )}
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createGame, validateDigit, getScore, E_DIGITS } from '@/lib/games/game-logic'
+import { createGame, validateDigit, getScore } from '@/lib/games/game-logic'
 
 describe('e-digits game logic', () => {
   it('should create a new game with initial state', () => {
