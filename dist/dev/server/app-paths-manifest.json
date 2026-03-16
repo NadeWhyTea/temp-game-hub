@@ -1,3 +1,5 @@
 {
+  "/games/e-digits/page": "app/games/e-digits/page.js",
+  "/games/wordle-solver/page": "app/games/wordle-solver/page.js",
   "/page": "app/page.js"
 }

@@ -21,8 +21,27 @@ const KEYBOARD_ROWS = [
 ];
 
 export default function WordleSolver() {
-  const [gameState, setGameState] = useState<WordleState>(() => createWordleGame());
+  const [gameState, setGameState] = useState<WordleState>({
+    targetWord: '',
+    guesses: [],
+    currentGuess: '',
+    isGameOver: false,
+    isWon: false,
+    possibleWords: [...WORDLE_WORDS],
+    isLoading: true,
+    useTodayWord: true,
+  });
   const [showTarget, setShowTarget] = useState(false);
+
+  // Initialize game on mount
+  useEffect(() => {
+    initializeGame(true);
+  }, []);
+
+  const initializeGame = async (useTodayWord: boolean) => {
+    const newState = await createWordleGame(useTodayWord);
+    setGameState(newState);
+  };
 
   const keyboardState = getKeyboardState(gameState.guesses);
 
@@ -49,7 +68,12 @@ export default function WordleSolver() {
   }, [handleKeyPress]);
 
   const resetGame = () => {
-    setGameState(createWordleGame());
+    initializeGame(gameState.useTodayWord);
+    setShowTarget(false);
+  };
+
+  const toggleTodayWord = () => {
+    initializeGame(!gameState.useTodayWord);
     setShowTarget(false);
   };
 
@@ -106,9 +130,27 @@ export default function WordleSolver() {
           <p className="text-gray-300 mb-2">
             Guess the 5-letter word in 6 tries or less.
           </p>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-400 mb-4">
             Green = correct position, Yellow = wrong position, Gray = not in word
           </p>
+          
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <span className="text-sm text-gray-400">
+              Mode: {gameState.useTodayWord ? "Today's Wordle" : "Random Word"}
+            </span>
+            <button
+              onClick={toggleTodayWord}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
+            >
+              Switch to {gameState.useTodayWord ? "Random" : "Today's"}
+            </button>
+          </div>
+          
+          {gameState.isLoading && (
+            <div className="text-yellow-400 text-sm">
+              Loading today's Wordle word...
+            </div>
+          )}
         </div>
 
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 mb-6 border border-white/20">
@@ -202,12 +244,14 @@ export default function WordleSolver() {
           <button
             onClick={resetGame}
             className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-lg transition-colors"
+            disabled={gameState.isLoading}
           >
-            New Game
+            {gameState.isLoading ? "Loading..." : "New Game"}
           </button>
           <button
             onClick={() => setShowTarget(!showTarget)}
             className="px-6 py-3 bg-gray-600 hover:bg-gray-500 text-white font-semibold rounded-lg transition-colors"
+            disabled={gameState.isLoading}
           >
             {showTarget ? "Hide" : "Show"} Answer
           </button>
