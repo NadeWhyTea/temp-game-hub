@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+// Deployed with enhanced Wordle solver features
 const games = [
   {
     id: "e-digits",
