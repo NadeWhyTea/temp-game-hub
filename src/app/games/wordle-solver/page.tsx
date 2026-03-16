@@ -9,7 +9,6 @@ import {
   removeLetter,
   getKeyboardState,
   WordleState,
-  WordleGuess,
   LetterState,
   WORDLE_WORDS,
 } from "@/lib/games/wordle-solver";
@@ -33,15 +32,18 @@ export default function WordleSolver() {
   });
   const [showTarget, setShowTarget] = useState(false);
 
-  // Initialize game on mount
-  useEffect(() => {
-    initializeGame(true);
-  }, []);
-
   const initializeGame = async (useTodayWord: boolean) => {
     const newState = await createWordleGame(useTodayWord);
     setGameState(newState);
   };
+
+  // Initialize game on mount
+  useEffect(() => {
+    const initGame = async () => {
+      await initializeGame(true);
+    };
+    initGame();
+  }, []);
 
   const keyboardState = getKeyboardState(gameState.guesses);
 
@@ -136,19 +138,19 @@ export default function WordleSolver() {
           
           <div className="flex items-center justify-center gap-4 mb-4">
             <span className="text-sm text-gray-400">
-              Mode: {gameState.useTodayWord ? "Today's Wordle" : "Random Word"}
+              Mode: {gameState.useTodayWord ? "Today&apos;s Wordle" : "Random Word"}
             </span>
             <button
               onClick={toggleTodayWord}
               className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
             >
-              Switch to {gameState.useTodayWord ? "Random" : "Today's"}
+              Switch to {gameState.useTodayWord ? "Random" : "Today&apos;s"}
             </button>
           </div>
           
           {gameState.isLoading && (
             <div className="text-yellow-400 text-sm">
-              Loading today's Wordle word...
+              Loading today&apos;s Wordle word...
             </div>
           )}
         </div>

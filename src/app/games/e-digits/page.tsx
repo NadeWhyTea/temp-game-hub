@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { createGame, validateDigit, getScore, getPersonalBestForMode, savePersonalBestForMode, getRevealedDigits, updatePracticeRevealedCount, E_DIGITS, GameState, GameMode } from "@/lib/games/game-logic";
+import { createGame, validateDigit, getScore, getPersonalBestForMode, savePersonalBestForMode, updatePracticeRevealedCount, E_DIGITS, GameState, GameMode } from "@/lib/games/game-logic";
 
 export default function EDigitsGame() {
   const [mode, setMode] = useState<GameMode>('main');
@@ -62,7 +62,6 @@ export default function EDigitsGame() {
   };
 
   const score = getScore(gameState);
-  const revealedDigits = getRevealedDigits(gameState.practiceRevealedCount);
   const enteredDigits = E_DIGITS.slice(0, gameState.currentIndex);
 
   return (

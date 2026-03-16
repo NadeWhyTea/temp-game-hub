@@ -135,7 +135,7 @@ async function fetchTodayWordleWord(): Promise<string> {
       const data = await response.json();
       return data.word.toUpperCase();
     }
-  } catch (error) {
+  } catch {
     console.warn('Failed to fetch today\'s Wordle word, using random word');
   }
   
