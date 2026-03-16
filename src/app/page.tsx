@@ -11,7 +11,7 @@ const games = [
   {
     id: "wordle-solver",
     name: "Wordle Solver",
-    description: "A tool to help solve Wordle puzzles with intelligent filtering.",
+    description: "A tool to help solve Wordle puzzles with intelligent filtering and today's Wordle word.",
     href: "/games/wordle-solver",
     status: "ready",
   },
