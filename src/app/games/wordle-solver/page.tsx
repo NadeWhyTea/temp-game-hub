@@ -119,7 +119,7 @@ export default function WordleSolver() {
       <div className="w-full max-w-2xl">
         <div className="flex items-center justify-between mb-8">
           <Link
-            href="/"
+            href="/home"
             className="text-white/70 hover:text-white transition-colors"
           >
             ← Back to Hub
