@@ -3,8 +3,8 @@
   publish = "out"
 
 [[redirects]]
-  from = "/games/*"
-  to = "/games/index.html"
+  from = "/games/:path"
+  to = "/games/:path.html"
   status = 200
 
 [[redirects]]
