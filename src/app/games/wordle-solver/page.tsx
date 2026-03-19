@@ -163,7 +163,7 @@ export default function WordleSolver() {
           
           {gameState.isLoading && (
             <div className="text-yellow-400 text-xs mb-2">
-              Loading today's Wordle word...
+              Loading today&apos;s Wordle word...
             </div>
           )}
         </div>
