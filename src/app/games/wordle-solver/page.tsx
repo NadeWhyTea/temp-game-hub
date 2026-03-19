@@ -10,7 +10,6 @@ import {
   getKeyboardState,
   WordleState,
   LetterState,
-  WORDLE_WORDS,
 } from "@/lib/games/wordle-solver";
 
 const KEYBOARD_ROWS = [
@@ -26,7 +25,8 @@ export default function WordleSolver() {
     currentGuess: '',
     isGameOver: false,
     isWon: false,
-    possibleWords: [...WORDLE_WORDS],
+    possibleWords: [],
+    allWords: [],
     isLoading: true,
     useTodayWord: true,
   });
@@ -151,27 +151,27 @@ export default function WordleSolver() {
         <div className="text-center mb-4">
           <div className="flex items-center justify-center gap-3 mb-2">
             <span className="text-xs text-gray-400">
-              Mode: {gameState.useTodayWord ? "Today&apos;s Wordle" : "Random Word"}
+              Mode: {gameState.useTodayWord ? "Daily Wordle" : "Free Play"}
             </span>
             <button
               onClick={toggleTodayWord}
               className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
             >
-              Switch to {gameState.useTodayWord ? "Random" : "Today&apos;s"}
+              Switch to {gameState.useTodayWord ? "Free Play" : "Daily Wordle"}
             </button>
           </div>
           
           {gameState.isLoading && (
             <div className="text-yellow-400 text-xs mb-2">
-              Loading today&apos;s Wordle word...
+              Loading today's Wordle word...
             </div>
           )}
         </div>
 
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 mb-4 border border-white/20">
-          <div className="grid grid-rows-6 gap-0.5 mb-4">
+          <div className="grid grid-rows-6 gap-1.5 mb-4 w-fit mx-auto">
             {Array.from({ length: 6 }).map((_, rowIndex) => (
-              <div key={rowIndex} className="grid grid-cols-5 gap-0.5">
+              <div key={rowIndex} className="grid grid-cols-5 gap-1.5">
                 {Array.from({ length: 5 }).map((_, colIndex) => {
                   const guess = gameState.guesses[rowIndex];
                   const letter = guess
@@ -186,7 +186,7 @@ export default function WordleSolver() {
                   return (
                     <div
                       key={colIndex}
-                      className={`w-8 h-8 flex items-center justify-center text-sm font-bold rounded border ${getLetterColor(
+                      className={`w-14 h-14 flex items-center justify-center text-xl font-bold rounded border ${getLetterColor(
                         state
                       )} ${
                         state === "empty"
