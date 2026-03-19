@@ -100,6 +100,26 @@ export default function WordleSolver() {
     return "bg-gray-600 text-gray-200 hover:bg-gray-500";
   };
 
+  // Calculate letter frequency from possible words
+  const getLetterFrequency = () => {
+    const frequency: Record<string, number> = {};
+    gameState.possibleWords.forEach(word => {
+      for (let i = 0; i < 5; i++) {
+        const letter = word[i];
+        frequency[letter] = (frequency[letter] || 0) + 1;
+      }
+    });
+    return frequency;
+  };
+
+  const getTopLetters = () => {
+    const frequency = getLetterFrequency();
+    return Object.entries(frequency)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 10)
+      .map(([letter, count]) => ({ letter, count, percentage: (count / gameState.possibleWords.length * 100).toFixed(1) }));
+  };
+
   const handleVirtualKey = (key: string) => {
     if (gameState.isGameOver) return;
 
@@ -115,50 +135,43 @@ export default function WordleSolver() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center p-4">
-      <div className="w-full max-w-2xl">
-        <div className="flex items-center justify-between mb-8">
+    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center p-2">
+      <div className="w-full max-w-4xl">
+        <div className="flex items-center justify-between mb-4">
           <Link
             href="/home"
-            className="text-white/70 hover:text-white transition-colors"
+            className="text-white/70 hover:text-white transition-colors text-sm"
           >
             ← Back to Hub
           </Link>
-          <h1 className="text-2xl font-bold text-white">Wordle Solver</h1>
-          <div className="w-20" />
+          <h1 className="text-xl font-bold text-white">Wordle Solver</h1>
+          <div className="w-16" />
         </div>
 
-        <div className="text-center mb-6">
-          <p className="text-gray-300 mb-2">
-            Guess the 5-letter word in 6 tries or less.
-          </p>
-          <p className="text-sm text-gray-400 mb-4">
-            Green = correct position, Yellow = wrong position, Gray = not in word
-          </p>
-          
-          <div className="flex items-center justify-center gap-4 mb-4">
-            <span className="text-sm text-gray-400">
+        <div className="text-center mb-4">
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <span className="text-xs text-gray-400">
               Mode: {gameState.useTodayWord ? "Today&apos;s Wordle" : "Random Word"}
             </span>
             <button
               onClick={toggleTodayWord}
-              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
+              className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
             >
               Switch to {gameState.useTodayWord ? "Random" : "Today&apos;s"}
             </button>
           </div>
           
           {gameState.isLoading && (
-            <div className="text-yellow-400 text-sm">
+            <div className="text-yellow-400 text-xs mb-2">
               Loading today&apos;s Wordle word...
             </div>
           )}
         </div>
 
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 mb-6 border border-white/20">
-          <div className="grid grid-rows-6 gap-2 mb-6">
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 mb-4 border border-white/20">
+          <div className="grid grid-rows-6 gap-0.5 mb-4">
             {Array.from({ length: 6 }).map((_, rowIndex) => (
-              <div key={rowIndex} className="grid grid-cols-5 gap-2">
+              <div key={rowIndex} className="grid grid-cols-5 gap-0.5">
                 {Array.from({ length: 5 }).map((_, colIndex) => {
                   const guess = gameState.guesses[rowIndex];
                   const letter = guess
@@ -173,7 +186,7 @@ export default function WordleSolver() {
                   return (
                     <div
                       key={colIndex}
-                      className={`aspect-square flex items-center justify-center text-2xl font-bold rounded-lg border-2 ${getLetterColor(
+                      className={`w-8 h-8 flex items-center justify-center text-sm font-bold rounded border ${getLetterColor(
                         state
                       )} ${
                         state === "empty"
@@ -189,50 +202,71 @@ export default function WordleSolver() {
             ))}
           </div>
 
-          {gameState.isGameOver && (
-            <div className="text-center mb-4">
+          {(gameState.isGameOver || gameState.possibleWords.length <= 10) && (
+            <div className="text-center mb-3">
               {gameState.isWon ? (
-                <div className="text-green-400 text-xl font-bold mb-2">
-                  🎉 Congratulations! You solved it!
+                <div className="text-green-400 text-sm font-bold mb-1">
+                  🎉 Solved in {gameState.guesses.length} tries!
                 </div>
-              ) : (
-                <div className="text-red-400 text-xl font-bold mb-2">
-                  Game Over! The word was: {gameState.targetWord}
+              ) : gameState.isGameOver ? (
+                <div className="text-red-400 text-sm font-bold mb-1">
+                  Game Over! Word: {gameState.targetWord}
                 </div>
-              )}
-              <div className="text-sm text-gray-400">
-                Possible words remaining: {gameState.possibleWords.length}
-              </div>
-            </div>
-          )}
-
-          {!gameState.isGameOver && (
-            <div className="text-center mb-4">
-              <div className="text-sm text-gray-400">
+              ) : null}
+              <div className="text-xs text-gray-400">
                 Possible words: {gameState.possibleWords.length}
               </div>
               {gameState.possibleWords.length <= 10 && (
-                <div className="mt-2 text-xs text-gray-500">
-                  {gameState.possibleWords.slice(0, 20).join(", ")}
+                <div className="mt-1 text-xs text-gray-500 max-h-8 overflow-y-auto">
+                  {gameState.possibleWords.join(", ")}
                 </div>
               )}
             </div>
           )}
         </div>
 
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 mb-6 border border-white/20">
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4 border border-white/20">
+          <div className="text-center mb-2">
+            <h3 className="text-sm font-semibold text-white mb-2">Statistics</h3>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-black/20 rounded p-2">
+                <div className="text-gray-400">Possible Words</div>
+                <div className="text-white font-bold">{gameState.possibleWords.length}</div>
+              </div>
+              <div className="bg-black/20 rounded p-2">
+                <div className="text-gray-400">Guesses Used</div>
+                <div className="text-white font-bold">{gameState.guesses.length}/6</div>
+              </div>
+            </div>
+            
+            {gameState.possibleWords.length > 0 && (
+              <div className="mt-2">
+                <div className="text-xs text-gray-400 mb-1">Top Letters in Possible Words:</div>
+                <div className="flex flex-wrap gap-1 justify-center">
+                  {getTopLetters().map(({ letter, percentage }) => (
+                    <div key={letter} className="bg-purple-600/30 text-purple-200 text-xs px-1 py-0.5 rounded">
+                      {letter} ({percentage}%)
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4 border border-white/20">
           {KEYBOARD_ROWS.map((row, rowIndex) => (
             <div key={rowIndex} className="flex justify-center gap-1 mb-1">
               {row.map((key) => (
                 <button
                   key={key}
                   onClick={() => handleVirtualKey(key)}
-                  className={`px-2 py-3 rounded font-semibold text-sm transition-colors ${getKeyboardKeyColor(
+                  className={`px-1 py-2 rounded font-semibold text-xs transition-colors ${getKeyboardKeyColor(
                     key
                   )} ${
                     key === "ENTER" || key === "BACK"
-                      ? "px-3 text-xs"
-                      : "px-4"
+                      ? "px-2 text-xs"
+                      : "px-2"
                   }`}
                 >
                   {key === "BACK" ? "⌫" : key}
@@ -242,17 +276,17 @@ export default function WordleSolver() {
           ))}
         </div>
 
-        <div className="flex gap-4 justify-center">
+        <div className="flex gap-2 justify-center">
           <button
             onClick={resetGame}
-            className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-lg transition-colors"
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold rounded transition-colors"
             disabled={gameState.isLoading}
           >
             {gameState.isLoading ? "Loading..." : "New Game"}
           </button>
           <button
             onClick={() => setShowTarget(!showTarget)}
-            className="px-6 py-3 bg-gray-600 hover:bg-gray-500 text-white font-semibold rounded-lg transition-colors"
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm font-semibold rounded transition-colors"
             disabled={gameState.isLoading}
           >
             {showTarget ? "Hide" : "Show"} Answer
@@ -260,8 +294,8 @@ export default function WordleSolver() {
         </div>
 
         {showTarget && (
-          <div className="mt-4 text-center">
-            <div className="text-yellow-400 text-lg font-bold">
+          <div className="mt-3 text-center">
+            <div className="text-yellow-400 text-sm font-bold">
               Answer: {gameState.targetWord}
             </div>
           </div>
