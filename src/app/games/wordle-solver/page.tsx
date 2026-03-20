@@ -5,14 +5,17 @@ import Link from "next/link";
 
 export type LetterState = 'correct' | 'present' | 'absent' | 'empty';
 
-export interface WordleGuess {
+export interface Guess {
   word: string;
   states: LetterState[];
+  strength?: number; // Store strength at time of guess
 }
+
+export interface WordleGuess extends Guess {}
 
 export interface WordleState {
   targetWord: string;
-  guesses: WordleGuess[];
+  guesses: Guess[];
   currentGuess: string;
   isGameOver: boolean;
   isWon: boolean;
@@ -272,13 +275,13 @@ export function filterPossibleWords(
   });
 }
 
-export function submitGuess(state: WordleState, guess: string): WordleState {
+export function submitGuess(state: WordleState, guess: string, strength?: number): WordleState {
   if (state.isGameOver || guess.length !== 5 || !state.allWords.includes(guess)) {
     return state;
   }
 
   const states = evaluateGuess(guess, state.targetWord);
-  const newGuess: WordleGuess = { word: guess, states };
+  const newGuess: WordleGuess = { word: guess, states, strength };
   const newGuesses = [...state.guesses, newGuess];
 
   const isWon = guess === state.targetWord;
@@ -410,7 +413,13 @@ export default function WordleSolver() {
 
       if (e.key === "Enter") {
         if (gameState.currentGuess.length === 5) {
-          setGameState((prev) => submitGuess(prev, prev.currentGuess));
+          // Calculate strength based on current top suggestion before submitting
+          const topSuggestedWord = suggestedWords[0]?.word;
+          const topScore = topSuggestedWord ? scoreWord(topSuggestedWord) : 1000;
+          const guessScore = scoreWord(gameState.currentGuess);
+          const strength = Math.min(100, Math.round((guessScore / topScore) * 100));
+          
+          setGameState((prev) => submitGuess(prev, prev.currentGuess, strength));
         }
       } else if (e.key === "Backspace") {
         setGameState((prev) => removeLetter(prev));
@@ -681,22 +690,26 @@ export default function WordleSolver() {
     return baseWords.slice(0, 5);
   }, [gameState.possibleWords, scoreWord, detectPillarOfDoom]);
 
-  // Calculate guess strength using same scoring as suggested words
-  const calculateGuessStrength = useCallback((guess: string): number => {
+  // Get stored strength from guess or calculate if not available
+  const getGuessStrength = useCallback((guess: Guess): number => {
+    // Return stored strength if available
+    if (guess.strength !== undefined) {
+      return guess.strength;
+    }
+    
+    // Fallback to calculation for older guesses without stored strength
     if (gameState.possibleWords.length === 0) return 100;
     
-    // Get the top suggested word's score for comparison
     const topSuggestedWord = suggestedWords[0]?.word;
     if (!topSuggestedWord) return 100;
     
     const topScore = scoreWord(topSuggestedWord);
-    const guessScore = scoreWord(guess);
+    const guessScore = scoreWord(guess.word);
     
-    // Calculate percentage relative to top suggested word
     const strengthPercentage = Math.round((guessScore / topScore) * 100);
     
     return Math.min(100, strengthPercentage);
-  }, [suggestedWords, scoreWord]);
+  }, [suggestedWords, scoreWord, gameState.possibleWords.length]);
 
   // Memoized letter frequency for statistics (different from scoring frequency)
   const detectPillars = useMemo(() => {
@@ -774,7 +787,13 @@ export default function WordleSolver() {
 
     if (key === "ENTER") {
       if (gameState.currentGuess.length === 5) {
-        setGameState((prev) => submitGuess(prev, prev.currentGuess));
+        // Calculate strength based on current top suggestion before submitting
+        const topSuggestedWord = suggestedWords[0]?.word;
+        const topScore = topSuggestedWord ? scoreWord(topSuggestedWord) : 1000;
+        const guessScore = scoreWord(gameState.currentGuess);
+        const strength = Math.min(100, Math.round((guessScore / topScore) * 100));
+        
+        setGameState((prev) => submitGuess(prev, prev.currentGuess, strength));
       }
     } else if (key === "BACK") {
       setGameState((prev) => removeLetter(prev));
@@ -871,13 +890,13 @@ export default function WordleSolver() {
                     <div className="ml-2 flex flex-col items-center justify-center">
                       <div className="text-xs text-gray-400 mb-0.5">Strength</div>
                       <div className={`text-xs font-bold px-1.5 py-0.5 rounded ${
-                        calculateGuessStrength(gameState.guesses[rowIndex].word) >= 70
-                          ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                          : calculateGuessStrength(gameState.guesses[rowIndex].word) >= 40
-                          ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                          : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                        getGuessStrength(gameState.guesses[rowIndex]) >= 70
+                          ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                          : getGuessStrength(gameState.guesses[rowIndex]) >= 40
+                          ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+                          : 'bg-red-500/20 text-red-300 border-red-500/30'
                       }`}>
-                        {calculateGuessStrength(gameState.guesses[rowIndex].word)}%
+                        {getGuessStrength(gameState.guesses[rowIndex])}%
                       </div>
                     </div>
                   )}
@@ -1076,45 +1095,6 @@ export default function WordleSolver() {
                   </div>
                 </>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* Pillar Detection Panel */}
-        {detectPillars.length > 0 && (
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4 border border-white/20">
-            <div className="text-center mb-2">
-              <h3 className="text-sm font-semibold text-white mb-2">Pillar Detection</h3>
-              <div className="text-xs text-gray-400 mb-2">
-                Strategic positions to eliminate many words
-              </div>
-              {getPillarSuggestions.map((pillar) => (
-                <div key={pillar.position} className="mb-3">
-                  <div className="text-xs text-yellow-400 mb-1">
-                    Position {pillar.position + 1}: {pillar.pattern} 
-                    <span className="text-green-400">(-{Math.round(pillar.eliminationPower)} words)</span>
-                  </div>
-                  <div className="text-xs text-gray-400 mb-1">
-                    Best characters: {pillar.suggestedChars.map(c => `${c.char}(${c.coverage})`).join(', ')}
-                  </div>
-                  <div className="flex flex-wrap gap-1 justify-center">
-                    {pillar.words.map(({ word, score }) => (
-                      <button
-                        key={word}
-                        onClick={() => {
-                          setGameState(prev => ({ ...prev, currentGuess: word }));
-                          // Remove focus from button to prevent Enter key from triggering it again
-                          (document.activeElement as HTMLElement)?.blur();
-                        }}
-                        className="px-2 py-1 text-xs font-semibold rounded bg-red-600/30 text-red-200 hover:bg-red-600/50 transition-colors"
-                      >
-                        {word}
-                        <span className="text-xs opacity-75 ml-1">({score})</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
         )}
