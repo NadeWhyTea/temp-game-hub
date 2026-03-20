@@ -126,7 +126,16 @@ async function fetchNYTWordleWord(): Promise<string> {
     console.warn("All API attempts failed:", error);
   }
   
-  console.warn("All NYT API attempts failed, using manual override");
+  console.warn("All NYT API attempts failed, trying fallback Wordle API");
+  // Fallback to working Wordle API
+  try {
+    const fallbackWord = await fetchTodayWordleWord(await fetchWordList());
+    console.log('Fallback Wordle API success:', fallbackWord);
+    return fallbackWord;
+  } catch (error) {
+    console.warn("Fallback Wordle API also failed:", error);
+  }
+  
   // Manual override for today's correct NYT Wordle word
   const today = new Date().toISOString().split('T')[0];
   const knownWords: Record<string, string> = {
