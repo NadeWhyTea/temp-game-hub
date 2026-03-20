@@ -1,0 +1,18 @@
+# temp-game-hub
+
+## Stack
+- Next.js 16, TypeScript, Tailwind v4
+- Prisma + SQLite
+- Vitest for tests
+
+## Structure
+- src/app/games/ — game pages
+- src/lib/games/ — game logic, keep separate from pages
+- public/ — static assets including words.json and nyt-answers.json
+
+## Conventions
+- Game logic stays in src/lib, never in page.tsx
+- Pages only import from lib, no logic duplication
+- Use "use client" at top of all game pages
+- Do not modify wordle-solver.ts and page.tsx in the same task
+- Always show me the full file contents when making changes to any file

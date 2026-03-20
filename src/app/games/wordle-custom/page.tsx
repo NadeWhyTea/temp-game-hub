@@ -83,9 +83,9 @@ export default function CustomWordle() {
     });
 
     // Mark present letters
-    guessLetters.forEach((letter) => {
-      if (targetLetters.includes(letter as string)) {
-        result[index] = 'present';
+    guessLetters.forEach((letter, letterIndex) => {
+      if (result[letterIndex] === 'empty' && targetLetters.includes(letter as string)) {
+        result[letterIndex] = 'present';
         const targetIndex = targetLetters.indexOf(letter);
         if (targetIndex !== -1) {
           targetLetters[targetIndex] = null;
@@ -94,7 +94,7 @@ export default function CustomWordle() {
     });
 
     // Mark absent letters
-    return result.map((state, index) => 
+    return result.map((state) => 
       state === 'empty' ? 'absent' : state
     );
   }, []);

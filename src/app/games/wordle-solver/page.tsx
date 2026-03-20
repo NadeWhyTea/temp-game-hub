@@ -387,7 +387,7 @@ export default function WordleSolver() {
         gameStats: null,
       });
     }
-  }, [gameState.gameMode, gameState.strategyMode]);
+  }, [gameState.gameMode, gameState.strategyMode, gameState.targetWord]);
 
   // Initialize game on mount
   useEffect(() => {
@@ -567,7 +567,7 @@ export default function WordleSolver() {
       
       return baseScoreConst - positionPenalty;
     }
-  }, [letterFrequencyForScoring, gameState.strategyMode, gameState.possibleWords.length, gameState.guesses, gameState.possibleWords]);
+  }, [letterFrequencyForScoring, gameState.strategyMode, gameState.guesses, gameState.possibleWords]);
 
   // Detect Pillar of Doom scenarios - risky first letter distributions that could cause losses
   const detectPillarOfDoom = useMemo(() => {
@@ -648,7 +648,7 @@ export default function WordleSolver() {
       dominantLetter,
       riskRatio
     };
-  }, [gameState.possibleWords.length, gameState.guesses.length, gameState.strategyMode, gameState.guesses, gameState.possibleWords]);
+  }, [gameState.possibleWords, gameState.strategyMode, gameState.guesses]);
 
   const suggestedWords = useMemo(() => {
     if (gameState.possibleWords.length <= 5) {
