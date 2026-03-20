@@ -80,9 +80,9 @@ export default function SpeedWordle() {
       }
     });
 
-    guessLetters.forEach((letter) => {
-      if (targetLetters.includes(letter as string)) {
-        result[index] = 'present';
+    guessLetters.forEach((letter, letterIndex) => {
+      if (result[letterIndex] === 'empty' && targetLetters.includes(letter as string)) {
+        result[letterIndex] = 'present';
         const targetIndex = targetLetters.indexOf(letter);
         if (targetIndex !== -1) {
           targetLetters[targetIndex] = null;
@@ -90,9 +90,9 @@ export default function SpeedWordle() {
       }
     });
 
-    return result.map((state, index) => 
-      state === 'empty' ? 'absent' : state
-    );
+    return result.map((state) => 
+        state === 'empty' ? 'absent' : state
+      );
   }, []);
 
   const submitGuess = useCallback(() => {

@@ -399,40 +399,6 @@ export default function WordleSolver() {
 
   const keyboardState = getKeyboardState(gameState.guesses);
 
-  const handleKeyPress = useCallback(
-    (e: KeyboardEvent) => {
-      // Prevent Enter key from triggering button clicks
-      if (e.key === "Enter" && document.activeElement?.tagName === "BUTTON") {
-        e.preventDefault();
-        return;
-      }
-
-      if (gameState.isGameOver) return;
-
-      if (e.key === "Enter") {
-        if (gameState.currentGuess.length === 5) {
-          // Calculate strength based on current top suggestion before submitting
-          const topSuggestedWord = suggestedWords[0]?.word;
-          const topScore = topSuggestedWord ? scoreWord(topSuggestedWord) : 1000;
-          const guessScore = scoreWord(gameState.currentGuess);
-          const strength = Math.min(100, Math.round((guessScore / topScore) * 100));
-          
-          setGameState((prev) => submitGuess(prev, prev.currentGuess, strength));
-        }
-      } else if (e.key === "Backspace") {
-        setGameState((prev) => removeLetter(prev));
-      } else if (/^[a-zA-Z]$/.test(e.key)) {
-        setGameState((prev) => addLetter(prev, e.key.toUpperCase()));
-      }
-    },
-    [gameState.isGameOver, gameState.currentGuess.length, gameState.targetWord, scoreWord, suggestedWords, gameState.possibleWords]
-  );
-
-  useEffect(() => {
-    window.addEventListener("keydown", handleKeyPress);
-    return () => window.removeEventListener("keydown", handleKeyPress);
-  }, [handleKeyPress]);
-
   const toggleStrategyMode = () => {
     setGameState(prev => ({ ...prev, strategyMode: prev.strategyMode === 'conservative' ? 'aggressive' : 'conservative' }));
     // Remove focus from button to prevent Enter key from triggering it again
@@ -601,7 +567,7 @@ export default function WordleSolver() {
       
       return baseScoreConst - positionPenalty;
     }
-  }, [letterFrequencyForScoring, gameState.strategyMode, gameState.possibleWords.length, gameState.guesses]);
+  }, [letterFrequencyForScoring, gameState.strategyMode, gameState.possibleWords.length, gameState.guesses, gameState.possibleWords]);
 
   // Detect Pillar of Doom scenarios - risky first letter distributions that could cause losses
   const detectPillarOfDoom = useMemo(() => {
@@ -682,7 +648,7 @@ export default function WordleSolver() {
       dominantLetter,
       riskRatio
     };
-  }, [gameState.possibleWords.length, gameState.guesses.length, gameState.strategyMode, gameState.guesses]);
+  }, [gameState.possibleWords.length, gameState.guesses.length, gameState.strategyMode, gameState.guesses, gameState.possibleWords]);
 
   const suggestedWords = useMemo(() => {
     if (gameState.possibleWords.length <= 5) {
