@@ -18,6 +18,17 @@ export interface CustomWordleState {
   isWon: boolean;
   wordLength: number;
   maxGuesses: number;
+  possibleWords: string[];
+}
+
+function scoreWord(word: string, possibleWords: string[]): number {
+  const freq: Record<string, number> = {};
+  possibleWords.forEach((w) => {
+    [...new Set(w.split(""))].forEach((l) => {
+      freq[l] = (freq[l] || 0) + 1;
+    });
+  });
+  return [...new Set(word.split(""))].reduce((sum, l) => sum + (freq[l] || 0), 0);
 }
 
 const KEYBOARD_ROWS = [
@@ -40,13 +51,14 @@ const SAMPLE_WORDS: Record<number, string[]> = {
 
 export default function CustomWordle() {
   const [gameState, setGameState] = useState<CustomWordleState>({
-    targetWord: '',
+    targetWord: "",
     guesses: [],
-    currentGuess: '',
+    currentGuess: "",
     isGameOver: false,
     isWon: false,
     wordLength: 5,
-    maxGuesses: 6
+    maxGuesses: 6,
+    possibleWords: [], // Initialize with an empty array
   });
 
   const [wordLength, setWordLength] = useState(5);
@@ -64,7 +76,8 @@ export default function CustomWordle() {
       isGameOver: false,
       isWon: false,
       wordLength,
-      maxGuesses
+      maxGuesses,
+      possibleWords: words,
     });
     setGameStarted(true);
   }, [wordLength, maxGuesses]);
@@ -99,6 +112,24 @@ export default function CustomWordle() {
     );
   }, []);
 
+  const filterPossibleWords = useCallback((lastGuess: Guess, currentPossibleWords: string[], targetWordLength: number): string[] => {
+    return currentPossibleWords.filter(word => {
+      for (let i = 0; i < targetWordLength; i++) {
+        const letter = lastGuess.word[i];
+        const state = lastGuess.states[i];
+
+        if (state === 'correct') {
+          if (word[i] !== letter) return false;
+        } else if (state === 'present') {
+          if (word[i] === letter || !word.includes(letter)) return false;
+        } else if (state === 'absent') {
+          if (word.includes(letter)) return false;
+        }
+      }
+      return true;
+    });
+  }, []);
+
   const submitGuess = useCallback(() => {
     if (gameState.currentGuess.length !== gameState.wordLength || gameState.isGameOver) {
       return;
@@ -111,14 +142,17 @@ export default function CustomWordle() {
     const isWon = gameState.currentGuess === gameState.targetWord;
     const isGameOver = isWon || newGuesses.length >= gameState.maxGuesses;
 
+    const updatedPossibleWords = filterPossibleWords(newGuess, gameState.possibleWords, gameState.wordLength);
+
     setGameState({
       ...gameState,
       guesses: newGuesses,
       currentGuess: '',
       isGameOver,
-      isWon
+      isWon,
+      possibleWords: updatedPossibleWords,
     });
-  }, [gameState, evaluateGuess]);
+  }, [gameState, evaluateGuess, filterPossibleWords]);
 
   const addLetter = useCallback((letter: string) => {
     if (gameState.currentGuess.length < gameState.wordLength && !gameState.isGameOver) {
@@ -130,6 +164,10 @@ export default function CustomWordle() {
     if (gameState.currentGuess.length > 0) {
       setGameState({ ...gameState, currentGuess: gameState.currentGuess.slice(0, -1) });
     }
+  }, [gameState]);
+
+  const fillSuggestion = useCallback((word: string) => {
+    setGameState({ ...gameState, currentGuess: word });
   }, [gameState]);
 
   const getLetterColor = useCallback((state: LetterState): string => {
@@ -251,6 +289,13 @@ export default function CustomWordle() {
     );
   }
 
+  const sortedSuggestions = gameState.possibleWords
+    .filter(word => word !== gameState.currentGuess) // Don't suggest the current guess
+    .sort((a, b) => scoreWord(b, gameState.possibleWords) - scoreWord(a, gameState.possibleWords))
+    .slice(0, 5);
+
+  const panelLabel = gameState.possibleWords.length <= 5 ? "Remaining Words" : "Suggested Words";
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center p-4">
       <div className="max-w-2xl w-full">
@@ -260,6 +305,25 @@ export default function CustomWordle() {
             {gameState.wordLength} letters • {gameState.maxGuesses} guesses
           </p>
         </div>
+
+        {!(gameState.isGameOver) && (
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 mb-4 border border-white/20">
+            <h2 className="text-white font-bold text-lg mb-3">{panelLabel}</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {sortedSuggestions.map((word, index) => (
+                <button
+                  key={word}
+                  onClick={() => fillSuggestion(word)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all text-white
+                    ${index === 0 ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-600 hover:bg-gray-500'}
+                  `}
+                >
+                  {word.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 mb-4 border border-white/20">
           <div className="grid gap-2 mb-4 justify-center">
