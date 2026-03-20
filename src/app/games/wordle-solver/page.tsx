@@ -337,6 +337,14 @@ export default function WordleSolver() {
   const initializeGame = async () => {
     console.log('initializeGame called - current mode:', gameState.gameMode, 'current word:', gameState.targetWord);
     const newState = await createWordleGame(gameState.gameMode, gameState.strategyMode);
+    console.log('initializeGame - new state:', {
+      gameMode: newState.gameMode,
+      targetWord: newState.targetWord,
+      isGameOver: newState.isGameOver,
+      isWon: newState.isWon,
+      currentGuess: newState.currentGuess,
+      possibleWords: newState.possibleWords.length
+    });
     setGameState(newState);
   };
 
@@ -384,6 +392,12 @@ export default function WordleSolver() {
 
   const resetGame = async () => {
     console.log('resetGame called - current mode:', gameState.gameMode, 'current word:', gameState.targetWord);
+    console.log('resetGame - game state before:', {
+      isGameOver: gameState.isGameOver,
+      isWon: gameState.isWon,
+      currentGuess: gameState.currentGuess,
+      guesses: gameState.guesses.length
+    });
     await initializeGame();
     setShowTarget(false);
   };
