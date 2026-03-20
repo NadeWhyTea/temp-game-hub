@@ -353,6 +353,7 @@ export default function WordleSolver() {
     gameStats: null,
   });
   const [showTarget, setShowTarget] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const initializeGame = useCallback(async () => {
     console.log('initializeGame called - current mode:', gameState.gameMode, 'current word:', gameState.targetWord);
@@ -507,7 +508,27 @@ export default function WordleSolver() {
       .map(([letter, count]) => ({ letter, count, percentage: (count / gameState.possibleWords.length * 100).toFixed(1) }));
   }, [getLetterFrequency, gameState.possibleWords]);
 
-  // Memoized letter frequency for scoring
+  // Calculate expected solve based on strategy and current guesses
+  const calculateExpectedSolve = useCallback(() => {
+    const guessesCount = gameState.guesses.length;
+    const possibleWordsCount = gameState.possibleWords.length;
+    
+    if (possibleWordsCount === 1) return 100;
+    if (possibleWordsCount === 0) return 0;
+    
+    // Base calculation on remaining words
+    const baseExpected = Math.max(0, 100 - (possibleWordsCount / 1000 * 100));
+    
+    // Adjust for strategy mode
+    const strategyMultiplier = gameState.strategyMode === 'aggressive' ? 1.2 : 1.0;
+    
+    // Adjust for guesses used (more guesses = slightly lower expected since we've had more chances)
+    const guessPenalty = guessesCount * 2;
+    
+    const expectedSolve = Math.max(0, Math.min(100, (baseExpected * strategyMultiplier) - guessPenalty));
+    
+    return Math.round(expectedSolve);
+  }, [gameState.possibleWords.length, gameState.guesses.length, gameState.strategyMode]);
   const letterFrequencyForScoring = useMemo(() => {
     const freq: Record<string, number> = {};
     gameState.possibleWords.forEach((w) => {
@@ -545,7 +566,7 @@ export default function WordleSolver() {
 
   // Detect Pillar of Doom scenarios - risky first letter distributions that could cause losses
   const detectPillarOfDoom = useMemo(() => {
-    if (gameState.possibleWords.length > 50) return []; // Only trigger when word count is manageable
+    if (gameState.possibleWords.length > 50) return { words: [], riskLevel: 0 }; // Only trigger when word count is manageable
     
     // Analyze first letter distribution
     const firstLetterCounts: Record<string, number> = {};
@@ -560,12 +581,22 @@ export default function WordleSolver() {
     const maxCount = Math.max(...Object.values(firstLetterCounts));
     const riskRatio = maxCount / totalWords;
     
-    // Determine if Pillar of Doom should trigger
-    const shouldTrigger = gameState.strategyMode === 'conservative' 
-      ? riskRatio > 0.25 && totalWords <= 30 // Conservative: trigger with lower risk, more words
-      : riskRatio > 0.35 && totalWords <= 20; // Aggressive: only trigger with higher risk, fewer words
+    // Determine if Pillar of Doom should trigger with different thresholds
+    const thresholds = gameState.strategyMode === 'conservative' 
+      ? { trigger: 0.20, pillarBreaker: 0.15, maxWords: 30 } // Conservative: lower thresholds
+      : { trigger: 0.30, pillarBreaker: 0.25, maxWords: 20 }; // Aggressive: higher thresholds
     
-    if (!shouldTrigger || letters.length <= 2) return [];
+    if (letters.length <= 2 || riskRatio < thresholds.pillarBreaker) {
+      return { words: [], riskLevel: 0 };
+    }
+    
+    // Determine risk level for UI
+    let riskLevel = 0;
+    if (riskRatio >= thresholds.trigger) {
+      riskLevel = 2; // High risk - show pillar breaker
+    } else if (riskRatio >= thresholds.pillarBreaker) {
+      riskLevel = 1; // Medium risk - show in suggestions
+    }
     
     // Find the best letters to test first position
     const letterFrequency = getLetterFrequency();
@@ -602,27 +633,52 @@ export default function WordleSolver() {
       }
     });
     
-    return testWords.slice(0, 2); // Return up to 2 strategic test words
+    return { 
+      words: testWords.slice(0, riskLevel >= 2 ? 2 : 1), 
+      riskLevel,
+      riskRatio,
+      dominantLetter: sortedLetters[0]?.letter || ''
+    };
   }, [gameState.possibleWords, gameState.strategyMode, getLetterFrequency]);
 
   const suggestedWords = useMemo(() => {
     if (gameState.possibleWords.length <= 5) {
-      return gameState.possibleWords.map(word => ({ word, score: 0 }));
+      return gameState.possibleWords.map(word => ({ word, score: 0, isPillarBreaker: false }));
     }
     
     // Check for Pillar of Doom scenarios first
-    const pillarOfDoomWords = detectPillarOfDoom;
-    if (pillarOfDoomWords.length > 0) {
-      console.log('Pillar of Doom detected! Strategic test words:', pillarOfDoomWords);
-      // Return Pillar of Doom words with high priority scores
-      return pillarOfDoomWords.map(word => ({ word, score: 9999 }));
-    }
-    
-    const scored = gameState.possibleWords
-      .map(word => ({ word, score: scoreWord(word) }))
+    const pillarOfDoom = detectPillarOfDoom;
+    const baseWords = gameState.possibleWords
+      .map(word => ({ word, score: scoreWord(word), isPillarBreaker: false }))
       .sort((a, b) => b.score - a.score);
     
-    return scored.slice(0, 5);
+    // If Pillar of Doom detected, integrate strategic words
+    if (pillarOfDoom.words.length > 0) {
+      console.log('Pillar of Doom detected! Risk level:', pillarOfDoom.riskLevel, 'Strategic test words:', pillarOfDoom.words);
+      
+      if (pillarOfDoom.riskLevel >= 2) {
+        // High risk - show pillar breaker words prominently
+        const pillarWords = pillarOfDoom.words.map(word => ({ 
+          word, 
+          score: 9999, 
+          isPillarBreaker: true 
+        }));
+        return [...pillarWords, ...baseWords.slice(0, 3)];
+      } else {
+        // Medium risk - integrate one pillar word into suggestions
+        const pillarWord = pillarOfDoom.words[0];
+        const pillarWordObj = { 
+          word: pillarWord, 
+          score: 8888, 
+          isPillarBreaker: true 
+        };
+        
+        // Insert pillar word at the top
+        return [pillarWordObj, ...baseWords.slice(0, 4)];
+      }
+    }
+    
+    return baseWords.slice(0, 5);
   }, [gameState.possibleWords, scoreWord, detectPillarOfDoom]);
 
   // Detect pillars/cliffs - character patterns that could eliminate many words
@@ -711,17 +767,17 @@ export default function WordleSolver() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center p-2">
-      <div className="w-full max-w-4xl">
-        <div className="flex items-center justify-between mb-4">
+    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center p-1">
+      <div className="w-full max-w-3xl">
+        <div className="flex items-center justify-between mb-3">
           <Link
             href="/home"
-            className="text-white/70 hover:text-white transition-colors text-sm"
+            className="text-white/70 hover:text-white transition-colors text-xs"
           >
             ← Back to Hub
           </Link>
-          <h1 className="text-xl font-bold text-white">Wordle Solver</h1>
-          <div className="w-16" />
+          <h1 className="text-lg font-bold text-white">Wordle Solver</h1>
+          <div className="w-12" />
         </div>
 
         <div className="text-center mb-4">
@@ -759,10 +815,10 @@ export default function WordleSolver() {
           )}
         </div>
 
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 mb-4 border border-white/20">
-          <div className="grid grid-rows-6 gap-1.5 mb-4 w-fit mx-auto">
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-3 border border-white/20">
+          <div className="grid grid-rows-6 gap-1 mb-3 w-fit mx-auto">
             {Array.from({ length: 6 }).map((_, rowIndex) => (
-              <div key={rowIndex} className="grid grid-cols-5 gap-1.5">
+              <div key={rowIndex} className="grid grid-cols-5 gap-1">
                 {Array.from({ length: 5 }).map((_, colIndex) => {
                   const guess = gameState.guesses[rowIndex];
                   const letter = guess
@@ -777,7 +833,7 @@ export default function WordleSolver() {
                   return (
                     <div
                       key={colIndex}
-                      className={`w-14 h-14 flex items-center justify-center text-xl font-bold rounded border ${getLetterColor(
+                      className={`w-12 h-12 flex items-center justify-center text-lg font-bold rounded border ${getLetterColor(
                         state
                       )} ${
                         state === "empty"
@@ -834,26 +890,25 @@ export default function WordleSolver() {
           )}
         </div>
 
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4 border border-white/20">
-          <div className="text-center mb-2">
-            <h3 className="text-sm font-semibold text-white mb-2">Statistics</h3>
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2 mb-3 border border-white/20">
+          <div className="text-center">
+            <h3 className="text-xs font-semibold text-white mb-1">Statistics</h3>
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="bg-black/20 rounded p-2">
-                <div className="text-gray-400">Possible Words</div>
+              <div className="bg-black/20 rounded p-1">
+                <div className="text-gray-400 text-xs">Words</div>
                 <div className="text-white font-bold">{gameState.possibleWords.length}</div>
               </div>
-              <div className="bg-black/20 rounded p-2">
-                <div className="text-gray-400">Guesses Used</div>
+              <div className="bg-black/20 rounded p-1">
+                <div className="text-gray-400 text-xs">Guesses</div>
                 <div className="text-white font-bold">{gameState.guesses.length}/6</div>
               </div>
             </div>
             
             {gameState.possibleWords.length > 0 && (
-              <div className="mt-2">
-                <div className="text-xs text-gray-400 mb-1">Top Letters in Possible Words:</div>
+              <div className="mt-1">
                 <div className="flex flex-wrap gap-1 justify-center">
-                  {topLetters.map(({ letter, percentage }: { letter: string; percentage: string }) => (
-                    <div key={letter} className="bg-purple-600/30 text-purple-200 text-xs px-1 py-0.5 rounded">
+                  {topLetters.slice(0, 6).map(({ letter, percentage }: { letter: string; percentage: string }) => (
+                    <div key={letter} className="bg-blue-600/30 text-blue-200 text-xs px-1 py-0.5 rounded">
                       {letter} ({percentage}%)
                     </div>
                   ))}
@@ -863,71 +918,148 @@ export default function WordleSolver() {
           </div>
         </div>
 
-        {/* Pillar of Doom Detection Panel */}
-        {detectPillarOfDoom.length > 0 && (
-          <div className="bg-red-600/20 backdrop-blur-sm rounded-xl p-3 mb-4 border border-red-500/30">
-            <div className="text-center mb-2">
-              <h3 className="text-sm font-semibold text-red-300 mb-2">⚠️ Pillar of Doom Detected!</h3>
-              <div className="text-xs text-red-400 mb-2">
-                Risky first-letter distribution detected. Testing strategic words to avoid bad luck losses.
-              </div>
-              <div className="text-xs text-gray-300 mb-2">
-                {gameState.strategyMode === 'conservative' 
-                  ? 'Conservative mode: Lower risk threshold for protection'
-                  : 'Aggressive mode: High risk threshold triggered'}
-              </div>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {detectPillarOfDoom.map((word, index) => (
-                  <button
-                    key={word}
-                    onClick={() => {
-                      setGameState(prev => ({ ...prev, currentGuess: word }));
-                      // Remove focus from button to prevent Enter key from triggering it again
-                      (document.activeElement as HTMLElement)?.blur();
-                    }}
-                    className="px-3 py-2 text-sm font-bold rounded bg-red-600 text-white hover:bg-red-500 transition-colors border border-red-400"
-                  >
-                    {word}
-                    <span className="text-xs opacity-75 ml-1">(Test)</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Suggested Words Panel */}
+        {/* Toggleable Suggested Words Panel */}
         {!gameState.isGameOver && !gameState.isLoading && (
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4 border border-white/20">
-            <div className="text-center mb-2">
-              <h3 className="text-sm font-semibold text-white mb-2">
-                {gameState.possibleWords.length <= 5 ? "Remaining Words" : "Suggested Words"}
-              </h3>
-              <div className="text-xs text-gray-400 mb-2">
-                {gameState.possibleWords.length > 5 && `${gameState.possibleWords.length} words left`}
-              </div>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {suggestedWords.map(({ word, score }: { word: string; score: number }, index: number) => (
-                  <button
-                    key={word}
-                    onClick={() => {
-                      setGameState(prev => ({ ...prev, currentGuess: word }));
-                      // Remove focus from button to prevent Enter key from triggering it again
-                      (document.activeElement as HTMLElement)?.blur();
-                    }}
-                    className={`px-2 py-1 text-xs font-semibold rounded transition-colors ${
-                      index === 0 && gameState.possibleWords.length > 5
-                        ? "bg-purple-600 text-white"
-                        : "bg-purple-600/30 text-purple-200 hover:bg-purple-600/50"
-                    }`}
-                  >
-                    {word}
-                    {gameState.possibleWords.length > 5 && (
-                      <span className="text-xs opacity-75 ml-1">({score})</span>
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2 mb-3 border border-white/20">
+            <div className="text-center">
+              {!showSuggestions ? (
+                /* Elegant collapsed state */
+                <div 
+                  className="relative cursor-pointer group"
+                  onClick={() => setShowSuggestions(true)}
+                >
+                  <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-lg p-2 border border-white/10 hover:border-white/20 transition-all">
+                    <div className="flex items-center justify-between">
+                      <div className="text-left">
+                        <div className="text-white font-semibold text-xs mb-1">Suggestions</div>
+                        <div className="text-gray-300 text-xs">
+                          {gameState.possibleWords.length <= 5 
+                            ? `${gameState.possibleWords.length} left` 
+                            : `${gameState.possibleWords.length} possible`}
+                        </div>
+                      </div>
+                      <div className="text-white/60 group-hover:text-white/80 transition-colors">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+                    
+                    {/* Expected solve indicator */}
+                    <div className="flex gap-1 mt-1">
+                      <div className="px-1.5 py-0.5 text-xs font-medium rounded-full bg-white/10 text-white/70 border border-white/20">
+                        {gameState.strategyMode === 'aggressive' ? 'Aggressive' : 'Conservative'}
+                      </div>
+                      <div className={`px-1.5 py-0.5 text-xs font-medium rounded-full border ${
+                        calculateExpectedSolve() >= 80
+                          ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                          : calculateExpectedSolve() >= 50
+                          ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+                          : 'bg-red-500/20 text-red-300 border-red-500/30'
+                      }`}>
+                        {calculateExpectedSolve()}% solve
+                      </div>
+                    </div>
+                    
+                    {/* Risk indicator */}
+                    {detectPillarOfDoom.words.length > 0 && detectPillarOfDoom.riskLevel >= 2 && (
+                      <div className="mt-1 flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>
+                        <div className="text-orange-300 text-xs">High risk</div>
+                      </div>
                     )}
-                  </button>
-                ))}
-              </div>
+                  </div>
+                </div>
+              ) : (
+                /* Expanded suggestions panel */
+                <>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-semibold text-white">
+                      Word Suggestions
+                    </h3>
+                    <button
+                      onClick={() => setShowSuggestions(false)}
+                      className="p-1 bg-white/10 hover:bg-white/20 text-white rounded transition-colors"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <div className="text-xs text-gray-400 mb-2">
+                    {gameState.possibleWords.length <= 5 
+                      ? `${gameState.possibleWords.length} words remaining` 
+                      : `${gameState.possibleWords.length} possible words`}
+                  </div>
+                  
+                  {/* Expected solve and strategy info */}
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-2 mb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-300">Strategy:</span>
+                        <span className="px-1.5 py-0.5 text-xs font-medium rounded-full bg-white/10 text-white/70 border border-white/20">
+                          {gameState.strategyMode === 'aggressive' ? 'Aggressive' : 'Conservative'}
+                        </span>
+                      </div>
+                      <div className={`px-1.5 py-0.5 text-xs font-bold rounded-full border ${
+                        calculateExpectedSolve() >= 80
+                          ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                          : calculateExpectedSolve() >= 50
+                          ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+                          : 'bg-red-500/20 text-red-300 border-red-500/30'
+                      }`}>
+                        {calculateExpectedSolve()}% solve
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Pillar of Doom warning */}
+                  {detectPillarOfDoom.words.length > 0 && detectPillarOfDoom.riskLevel >= 2 && (
+                    <div className="bg-orange-500/20 border border-orange-500/30 rounded-lg p-2 mb-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                        <div className="text-orange-300 font-semibold text-xs">High Risk Pattern</div>
+                      </div>
+                      <div className="text-orange-200 text-xs">
+                        "{detectPillarOfDoom.dominantLetter}" in {Math.round(detectPillarOfDoom.riskRatio! * 100)}% of words
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="space-y-1">
+                    {suggestedWords.map(({ word, score, isPillarBreaker }: { word: string; score: number; isPillarBreaker: boolean }, index: number) => (
+                      <button
+                        key={word}
+                        onClick={() => {
+                          setGameState(prev => ({ ...prev, currentGuess: word }));
+                          // Remove focus from button to prevent Enter key from triggering it again
+                          (document.activeElement as HTMLElement)?.blur();
+                        }}
+                        className={`w-full p-1.5 rounded text-left transition-all text-xs ${
+                          isPillarBreaker
+                            ? "bg-orange-500/20 border border-orange-500/30 text-orange-300 hover:bg-orange-500/30"
+                            : index === 0 && gameState.possibleWords.length > 5 && !isPillarBreaker
+                              ? "bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30"
+                              : "bg-white/5 border border-white/10 text-white/70 hover:bg-white/10"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">{word}</span>
+                            {isPillarBreaker && (
+                              <span className="px-1 py-0.5 bg-orange-500/30 text-orange-200 text-xs rounded-full">Shield</span>
+                            )}
+                          </div>
+                          {!isPillarBreaker && gameState.possibleWords.length > 5 && (
+                            <span className="text-xs opacity-60">{score}</span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -971,9 +1103,9 @@ export default function WordleSolver() {
           </div>
         )}
 
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4 border border-white/20">
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-3 border border-white/20">
           {KEYBOARD_ROWS.map((row, rowIndex) => (
-            <div key={rowIndex} className="flex justify-center gap-1 mb-1">
+            <div key={rowIndex} className="flex justify-center gap-1.5 mb-1.5">
               {row.map((key) => (
                 <button
                   key={key}
@@ -982,11 +1114,13 @@ export default function WordleSolver() {
                     // Remove focus from button to prevent Enter key from triggering it again
                     (document.activeElement as HTMLElement)?.blur();
                   }}
-                  className={`px-1 py-2 rounded font-semibold text-xs transition-colors ${getKeyboardKeyColor(
+                  className={`px-3 py-3 rounded font-semibold text-sm transition-colors ${getKeyboardKeyColor(
                     key
                   )} ${
                     key === 'ENTER'
-                      ? 'px-4'
+                      ? 'px-6 text-xs'
+                      : key === 'BACK'
+                      ? 'px-5'
                       : ''
                   }`}
                 >
@@ -1000,14 +1134,14 @@ export default function WordleSolver() {
         <div className="flex gap-2 justify-center">
           <button
             onClick={resetGame}
-            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold rounded transition-colors"
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded transition-colors"
             disabled={gameState.isLoading}
           >
             {gameState.isLoading ? "Loading..." : "New Game"}
           </button>
           <button
             onClick={() => setShowTarget(!showTarget)}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm font-semibold rounded transition-colors"
+            className="px-3 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm font-semibold rounded transition-colors"
             disabled={gameState.isLoading}
           >
             {showTarget ? "Hide" : "Show"} Answer
