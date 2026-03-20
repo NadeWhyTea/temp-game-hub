@@ -566,12 +566,50 @@ export default function WordleSolver() {
         return bonus + (posFrequency > gameState.possibleWords.length * 0.15 ? 200 * positionWeight : 0);
       }, 0);
       
-      return baseScore + uniquenessBonus + positionBonus;
+      // Penalize for known letter position conflicts
+      let positionPenalty = 0;
+      gameState.guesses.forEach(guess => {
+        guess.states.forEach((state, index) => {
+          const guessLetter = guess.word[index];
+          const wordLetter = word[index];
+          
+          // If we know this letter exists but is in wrong position in guess
+          if (state === 'present' && wordLetter === guessLetter) {
+            positionPenalty += 500; // Heavy penalty for same wrong position
+          }
+          
+          // If we know this letter is correct in this position, and word doesn't match
+          if (state === 'correct' && wordLetter !== guessLetter) {
+            positionPenalty += 1000; // Very heavy penalty for not using known correct position
+          }
+        });
+      });
+      
+      return baseScore + uniquenessBonus + positionBonus - positionPenalty;
     } else {
       // Conservative mode: Much more conservative scoring, focus on safe letter coverage
-      return [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0) * 0.5;
+      let baseScore = [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0) * 0.5;
+      
+      // Apply same position penalties for conservative mode
+      let positionPenalty = 0;
+      gameState.guesses.forEach(guess => {
+        guess.states.forEach((state, index) => {
+          const guessLetter = guess.word[index];
+          const wordLetter = word[index];
+          
+          if (state === 'present' && wordLetter === guessLetter) {
+            positionPenalty += 250; // Penalty for same wrong position
+          }
+          
+          if (state === 'correct' && wordLetter !== guessLetter) {
+            positionPenalty += 500; // Penalty for not using known correct position
+          }
+        });
+      });
+      
+      return baseScore - positionPenalty;
     }
-  }, [letterFrequencyForScoring, gameState.strategyMode, gameState.possibleWords.length]);
+  }, [letterFrequencyForScoring, gameState.strategyMode, gameState.possibleWords.length, gameState.guesses]);
 
   // Detect Pillar of Doom scenarios - risky first letter distributions that could cause losses
   const detectPillarOfDoom = useMemo(() => {
