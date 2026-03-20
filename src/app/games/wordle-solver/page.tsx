@@ -543,9 +543,79 @@ export default function WordleSolver() {
     }
   }, [letterFrequencyForScoring, gameState.strategyMode, gameState.possibleWords.length]);
 
+  // Detect Pillar of Doom scenarios - risky first letter distributions that could cause losses
+  const detectPillarOfDoom = useMemo(() => {
+    if (gameState.possibleWords.length > 50) return []; // Only trigger when word count is manageable
+    
+    // Analyze first letter distribution
+    const firstLetterCounts: Record<string, number> = {};
+    gameState.possibleWords.forEach(word => {
+      const firstLetter = word[0];
+      firstLetterCounts[firstLetter] = (firstLetterCounts[firstLetter] || 0) + 1;
+    });
+    
+    // Calculate risk of loss scenario
+    const totalWords = gameState.possibleWords.length;
+    const letters = Object.keys(firstLetterCounts);
+    const maxCount = Math.max(...Object.values(firstLetterCounts));
+    const riskRatio = maxCount / totalWords;
+    
+    // Determine if Pillar of Doom should trigger
+    const shouldTrigger = gameState.strategyMode === 'conservative' 
+      ? riskRatio > 0.25 && totalWords <= 30 // Conservative: trigger with lower risk, more words
+      : riskRatio > 0.35 && totalWords <= 20; // Aggressive: only trigger with higher risk, fewer words
+    
+    if (!shouldTrigger || letters.length <= 2) return [];
+    
+    // Find the best letters to test first position
+    const letterFrequency = getLetterFrequency();
+    const sortedLetters = letters
+      .map(letter => ({
+        letter,
+        count: firstLetterCounts[letter],
+        frequency: letterFrequency[letter] || 0,
+        riskRatio: firstLetterCounts[letter] / totalWords
+      }))
+      .sort((a, b) => b.riskRatio - a.riskRatio);
+    
+    // Create strategic test words using high-frequency letters
+    const topLetters = sortedLetters.slice(0, Math.min(4, sortedLetters.length));
+    const testWords: string[] = [];
+    
+    // Generate words that test these first letters
+    topLetters.forEach(({ letter }) => {
+      // Find words that start with this letter and have other common letters
+      const candidateWords = gameState.possibleWords.filter(word => 
+        word[0] === letter && 
+        [...new Set(word.split(''))].length >= 4 // Prefer words with unique letters
+      );
+      
+      if (candidateWords.length > 0) {
+        // Score candidates by letter diversity and frequency
+        const scored = candidateWords.map(word => {
+          const uniqueLetters = [...new Set(word.split(''))];
+          const diversityScore = uniqueLetters.reduce((sum, l) => sum + (letterFrequency[l] || 0), 0);
+          return { word, score: diversityScore };
+        }).sort((a, b) => b.score - a.score);
+        
+        testWords.push(scored[0].word);
+      }
+    });
+    
+    return testWords.slice(0, 2); // Return up to 2 strategic test words
+  }, [gameState.possibleWords, gameState.strategyMode, getLetterFrequency]);
+
   const suggestedWords = useMemo(() => {
     if (gameState.possibleWords.length <= 5) {
       return gameState.possibleWords.map(word => ({ word, score: 0 }));
+    }
+    
+    // Check for Pillar of Doom scenarios first
+    const pillarOfDoomWords = detectPillarOfDoom;
+    if (pillarOfDoomWords.length > 0) {
+      console.log('Pillar of Doom detected! Strategic test words:', pillarOfDoomWords);
+      // Return Pillar of Doom words with high priority scores
+      return pillarOfDoomWords.map(word => ({ word, score: 9999 }));
     }
     
     const scored = gameState.possibleWords
@@ -553,7 +623,7 @@ export default function WordleSolver() {
       .sort((a, b) => b.score - a.score);
     
     return scored.slice(0, 5);
-  }, [gameState.possibleWords, scoreWord]);
+  }, [gameState.possibleWords, scoreWord, detectPillarOfDoom]);
 
   // Detect pillars/cliffs - character patterns that could eliminate many words
   const detectPillars = useMemo(() => {
@@ -792,6 +862,39 @@ export default function WordleSolver() {
             )}
           </div>
         </div>
+
+        {/* Pillar of Doom Detection Panel */}
+        {detectPillarOfDoom.length > 0 && (
+          <div className="bg-red-600/20 backdrop-blur-sm rounded-xl p-3 mb-4 border border-red-500/30">
+            <div className="text-center mb-2">
+              <h3 className="text-sm font-semibold text-red-300 mb-2">⚠️ Pillar of Doom Detected!</h3>
+              <div className="text-xs text-red-400 mb-2">
+                Risky first-letter distribution detected. Testing strategic words to avoid bad luck losses.
+              </div>
+              <div className="text-xs text-gray-300 mb-2">
+                {gameState.strategyMode === 'conservative' 
+                  ? 'Conservative mode: Lower risk threshold for protection'
+                  : 'Aggressive mode: High risk threshold triggered'}
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {detectPillarOfDoom.map((word, index) => (
+                  <button
+                    key={word}
+                    onClick={() => {
+                      setGameState(prev => ({ ...prev, currentGuess: word }));
+                      // Remove focus from button to prevent Enter key from triggering it again
+                      (document.activeElement as HTMLElement)?.blur();
+                    }}
+                    className="px-3 py-2 text-sm font-bold rounded bg-red-600 text-white hover:bg-red-500 transition-colors border border-red-400"
+                  >
+                    {word}
+                    <span className="text-xs opacity-75 ml-1">(Test)</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Suggested Words Panel */}
         {!gameState.isGameOver && !gameState.isLoading && (
