@@ -908,7 +908,7 @@ export default function WordleSolver() {
               <div className="mt-1">
                 <div className="flex flex-wrap gap-1 justify-center">
                   {topLetters.slice(0, 6).map(({ letter, percentage }: { letter: string; percentage: string }) => (
-                    <div key={letter} className="bg-blue-600/30 text-blue-200 text-xs px-1 py-0.5 rounded">
+                    <div key={letter} className="bg-white/20 text-gray-300 text-xs px-1 py-0.5 rounded border border-white/30">
                       {letter} ({percentage}%)
                     </div>
                   ))}
@@ -920,7 +920,7 @@ export default function WordleSolver() {
 
         {/* Toggleable Suggested Words Panel */}
         {!gameState.isGameOver && !gameState.isLoading && (
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2 mb-3 border border-white/20">
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1.5 mb-3 border border-white/20">
             <div className="text-center">
               {!showSuggestions ? (
                 /* Elegant collapsed state */
@@ -928,10 +928,10 @@ export default function WordleSolver() {
                   className="relative cursor-pointer group"
                   onClick={() => setShowSuggestions(true)}
                 >
-                  <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-lg p-2 border border-white/10 hover:border-white/20 transition-all">
+                  <div className="bg-gradient-to-r from-white/10 to-white/5 rounded-lg p-1.5 border border-white/10 hover:border-white/20 transition-all">
                     <div className="flex items-center justify-between">
                       <div className="text-left">
-                        <div className="text-white font-semibold text-xs mb-1">Suggestions</div>
+                        <div className="text-white font-semibold text-xs mb-0.5">Suggestions</div>
                         <div className="text-gray-300 text-xs">
                           {gameState.possibleWords.length <= 5 
                             ? `${gameState.possibleWords.length} left` 
@@ -939,7 +939,7 @@ export default function WordleSolver() {
                         </div>
                       </div>
                       <div className="text-white/60 group-hover:text-white/80 transition-colors">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
                       </div>
@@ -947,10 +947,10 @@ export default function WordleSolver() {
                     
                     {/* Expected solve indicator */}
                     <div className="flex gap-1 mt-1">
-                      <div className="px-1.5 py-0.5 text-xs font-medium rounded-full bg-white/10 text-white/70 border border-white/20">
+                      <div className="px-1 py-0.5 text-xs font-medium rounded-full bg-white/10 text-white/70 border border-white/20">
                         {gameState.strategyMode === 'aggressive' ? 'Aggressive' : 'Conservative'}
                       </div>
-                      <div className={`px-1.5 py-0.5 text-xs font-medium rounded-full border ${
+                      <div className={`px-1 py-0.5 text-xs font-medium rounded-full border ${
                         calculateExpectedSolve() >= 80
                           ? 'bg-green-500/20 text-green-300 border-green-500/30'
                           : calculateExpectedSolve() >= 50
@@ -960,26 +960,18 @@ export default function WordleSolver() {
                         {calculateExpectedSolve()}% solve
                       </div>
                     </div>
-                    
-                    {/* Risk indicator */}
-                    {detectPillarOfDoom.words.length > 0 && detectPillarOfDoom.riskLevel >= 2 && (
-                      <div className="mt-1 flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>
-                        <div className="text-orange-300 text-xs">High risk</div>
-                      </div>
-                    )}
                   </div>
                 </div>
               ) : (
                 /* Expanded suggestions panel */
                 <>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-1.5">
                     <h3 className="text-xs font-semibold text-white">
                       Word Suggestions
                     </h3>
                     <button
                       onClick={() => setShowSuggestions(false)}
-                      className="p-1 bg-white/10 hover:bg-white/20 text-white rounded transition-colors"
+                      className="p-0.5 bg-white/10 hover:bg-white/20 text-white rounded transition-colors"
                     >
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -987,22 +979,22 @@ export default function WordleSolver() {
                     </button>
                   </div>
                   
-                  <div className="text-xs text-gray-400 mb-2">
+                  <div className="text-xs text-gray-400 mb-1.5">
                     {gameState.possibleWords.length <= 5 
                       ? `${gameState.possibleWords.length} words remaining` 
                       : `${gameState.possibleWords.length} possible words`}
                   </div>
                   
                   {/* Expected solve and strategy info */}
-                  <div className="bg-white/5 border border-white/10 rounded-lg p-2 mb-2">
+                  <div className="bg-white/5 border border-white/10 rounded p-1.5 mb-1.5">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <span className="text-xs text-gray-300">Strategy:</span>
-                        <span className="px-1.5 py-0.5 text-xs font-medium rounded-full bg-white/10 text-white/70 border border-white/20">
+                        <span className="px-1 py-0.5 text-xs font-medium rounded-full bg-white/10 text-white/70 border border-white/20">
                           {gameState.strategyMode === 'aggressive' ? 'Aggressive' : 'Conservative'}
                         </span>
                       </div>
-                      <div className={`px-1.5 py-0.5 text-xs font-bold rounded-full border ${
+                      <div className={`px-1 py-0.5 text-xs font-bold rounded-full border ${
                         calculateExpectedSolve() >= 80
                           ? 'bg-green-500/20 text-green-300 border-green-500/30'
                           : calculateExpectedSolve() >= 50
@@ -1014,20 +1006,7 @@ export default function WordleSolver() {
                     </div>
                   </div>
                   
-                  {/* Pillar of Doom warning */}
-                  {detectPillarOfDoom.words.length > 0 && detectPillarOfDoom.riskLevel >= 2 && (
-                    <div className="bg-orange-500/20 border border-orange-500/30 rounded-lg p-2 mb-2">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                        <div className="text-orange-300 font-semibold text-xs">High Risk Pattern</div>
-                      </div>
-                      <div className="text-orange-200 text-xs">
-                        "{detectPillarOfDoom.dominantLetter}" in {Math.round(detectPillarOfDoom.riskRatio! * 100)}% of words
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div className="space-y-1">
+                  <div className="space-y-0.5">
                     {suggestedWords.map(({ word, score, isPillarBreaker }: { word: string; score: number; isPillarBreaker: boolean }, index: number) => (
                       <button
                         key={word}
@@ -1036,19 +1015,19 @@ export default function WordleSolver() {
                           // Remove focus from button to prevent Enter key from triggering it again
                           (document.activeElement as HTMLElement)?.blur();
                         }}
-                        className={`w-full p-1.5 rounded text-left transition-all text-xs ${
+                        className={`w-full p-1 rounded text-left transition-all text-xs ${
                           isPillarBreaker
                             ? "bg-orange-500/20 border border-orange-500/30 text-orange-300 hover:bg-orange-500/30"
                             : index === 0 && gameState.possibleWords.length > 5 && !isPillarBreaker
-                              ? "bg-blue-500/20 border border-blue-500/30 text-blue-300 hover:bg-blue-500/30"
-                              : "bg-white/5 border border-white/10 text-white/70 hover:bg-white/10"
+                              ? "bg-white/15 border border-white/20 text-white/80 hover:bg-white/20"
+                              : "bg-white/5 border border-white/10 text-white/60 hover:bg-white/10"
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <span className="font-semibold">{word}</span>
                             {isPillarBreaker && (
-                              <span className="px-1 py-0.5 bg-orange-500/30 text-orange-200 text-xs rounded-full">Shield</span>
+                              <span className="px-1 py-0.5 bg-orange-500/30 text-orange-200 text-xs rounded-full">Pillar</span>
                             )}
                           </div>
                           {!isPillarBreaker && gameState.possibleWords.length > 5 && (
