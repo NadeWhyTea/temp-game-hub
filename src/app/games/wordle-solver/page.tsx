@@ -539,40 +539,6 @@ export default function WordleSolver() {
     return freq;
   }, [gameState.possibleWords]);
 
-  // Calculate guess strength using same scoring as suggested words
-  const calculateGuessStrength = useCallback((guess: string): number => {
-    if (gameState.possibleWords.length === 0) return 100;
-    
-    // Use the same scoring logic as suggestedWords
-    let score = 0;
-    const letterFrequency = letterFrequencyForScoring;
-    const topLetters = Object.entries(letterFrequency)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 10)
-      .map(([letter]) => letter);
-
-    // Letter frequency score
-    for (let i = 0; i < guess.length; i++) {
-      const letter = guess[i];
-      score += letterFrequency[letter] || 0;
-      
-      // Position bonus for top letters
-      if (topLetters.includes(letter)) {
-        score += (topLetters.indexOf(letter) + 1) * 2;
-      }
-    }
-
-    // Unique letters bonus
-    const uniqueLetters = new Set(guess.split('')).size;
-    score += uniqueLetters * 5;
-
-    // Normalize to 0-100 scale
-    const maxPossibleScore = 500; // Approximate max score
-    const normalizedScore = Math.min(100, Math.round((score / maxPossibleScore) * 100));
-    
-    return normalizedScore;
-  }, [gameState.possibleWords.length, letterFrequencyForScoring]);
-
   // Score words by letter coverage for suggestions
   const scoreWord = useCallback((word: string): number => {
     if (gameState.strategyMode === 'aggressive') {
@@ -597,6 +563,20 @@ export default function WordleSolver() {
       return [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0) * 0.5;
     }
   }, [letterFrequencyForScoring, gameState.strategyMode, gameState.possibleWords.length]);
+
+  // Calculate guess strength using same scoring as suggested words
+  const calculateGuessStrength = useCallback((guess: string): number => {
+    if (gameState.possibleWords.length === 0) return 100;
+    
+    // Use the exact same scoring logic as scoreWord
+    const rawScore = scoreWord(guess);
+    
+    // Normalize to 0-100 scale based on possible max scores
+    const maxPossibleScore = gameState.strategyMode === 'aggressive' ? 2000 : 500;
+    const normalizedScore = Math.min(100, Math.round((rawScore / maxPossibleScore) * 100));
+    
+    return normalizedScore;
+  }, [gameState.possibleWords.length, scoreWord, gameState.strategyMode]);
 
   // Detect Pillar of Doom scenarios - risky first letter distributions that could cause losses
   const detectPillarOfDoom = useMemo(() => {
