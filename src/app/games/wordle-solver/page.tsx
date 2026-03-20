@@ -508,48 +508,6 @@ export default function WordleSolver() {
       .map(([letter, count]) => ({ letter, count, percentage: (count / gameState.possibleWords.length * 100).toFixed(1) }));
   }, [getLetterFrequency, gameState.possibleWords]);
 
-  // Calculate guess strength based on letter coverage and information gain
-  const calculateGuessStrength = useCallback((guess: string, remainingWords: string[]): number => {
-    if (remainingWords.length === 0) return 100;
-    
-    let eliminatedWords = 0;
-    const guessLetters = new Set(guess.split(''));
-    
-    remainingWords.forEach(word => {
-      let wouldBeEliminated = false;
-      
-      // Check if this word would be eliminated by the guess
-      for (let i = 0; i < 5; i++) {
-        const guessLetter = guess[i];
-        const wordLetter = word[i];
-        
-        // If guess letter is not in the word at all, and word has that letter elsewhere, it would be eliminated
-        if (!guessLetters.has(wordLetter)) {
-          wouldBeEliminated = true;
-          break;
-        }
-        
-        // If guess letter is in wrong position, and word has it in wrong position, it might be eliminated
-        if (guess[i] !== word[i] && guessLetters.has(wordLetter)) {
-          // This is simplified - real Wordle logic is more complex
-          wouldBeEliminated = true;
-          break;
-        }
-      }
-      
-      if (wouldBeEliminated) {
-        eliminatedWords++;
-      }
-    });
-    
-    const eliminationPercentage = (eliminatedWords / remainingWords.length) * 100;
-    
-    // Bonus for unique letters
-    const uniqueBonus = guessLetters.size === 5 ? 10 : 0;
-    
-    return Math.min(100, Math.round(eliminationPercentage + uniqueBonus));
-  }, []);
-
   // Calculate expected solve based on strategy and current guesses
   const calculateExpectedSolve = useCallback(() => {
     const guessesCount = gameState.guesses.length;
@@ -581,34 +539,68 @@ export default function WordleSolver() {
     return freq;
   }, [gameState.possibleWords]);
 
+  // Calculate guess strength using same scoring as suggested words
+  const calculateGuessStrength = useCallback((guess: string): number => {
+    if (gameState.possibleWords.length === 0) return 100;
+    
+    // Use the same scoring logic as suggestedWords
+    let score = 0;
+    const letterFrequency = letterFrequencyForScoring;
+    const topLetters = Object.entries(letterFrequency)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 10)
+      .map(([letter]) => letter);
+
+    // Letter frequency score
+    for (let i = 0; i < guess.length; i++) {
+      const letter = guess[i];
+      score += letterFrequency[letter] || 0;
+      
+      // Position bonus for top letters
+      if (topLetters.includes(letter)) {
+        score += (topLetters.indexOf(letter) + 1) * 2;
+      }
+    }
+
+    // Unique letters bonus
+    const uniqueLetters = new Set(guess.split('')).size;
+    score += uniqueLetters * 5;
+
+    // Normalize to 0-100 scale
+    const maxPossibleScore = 500; // Approximate max score
+    const normalizedScore = Math.min(100, Math.round((score / maxPossibleScore) * 100));
+    
+    return normalizedScore;
+  }, [gameState.possibleWords.length, letterFrequencyForScoring]);
+
   // Score words by letter coverage for suggestions
   const scoreWord = useCallback((word: string): number => {
     if (gameState.strategyMode === 'aggressive') {
-      // Aggressive mode: Prioritize words with unique letters and high information gain
+      // Aggressive mode: Much stronger emphasis on unique letters and information gain
       const uniqueLetters = new Set(word.split(''));
       const baseScore = [...uniqueLetters].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0);
       
-      // Bonus for words with all unique letters (max information)
-      const uniquenessBonus = uniqueLetters.size === 5 ? 500 : 0;
+      // Large bonus for words with all unique letters (max information)
+      const uniquenessBonus = uniqueLetters.size === 5 ? 1000 : 0;
       
-      // Bonus for words with common letters in high-frequency positions
+      // Strong bonus for words with common letters in high-frequency positions
       const positionBonus = word.split('').reduce((bonus, letter, pos) => {
         const posFrequency = letterFrequencyForScoring[letter] || 0;
-        // Higher bonus for letters in earlier positions (0, 1, 2)
-        const positionWeight = pos <= 2 ? 1.5 : 1;
-        return bonus + (posFrequency > gameState.possibleWords.length * 0.15 ? 100 * positionWeight : 0);
+        // Much higher bonus for letters in earlier positions (0, 1, 2)
+        const positionWeight = pos <= 2 ? 2.5 : 1;
+        return bonus + (posFrequency > gameState.possibleWords.length * 0.15 ? 200 * positionWeight : 0);
       }, 0);
       
       return baseScore + uniquenessBonus + positionBonus;
     } else {
-      // Conservative mode: Original letter coverage scoring
-      return [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0);
+      // Conservative mode: Much more conservative scoring, focus on safe letter coverage
+      return [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0) * 0.5;
     }
   }, [letterFrequencyForScoring, gameState.strategyMode, gameState.possibleWords.length]);
 
   // Detect Pillar of Doom scenarios - risky first letter distributions that could cause losses
   const detectPillarOfDoom = useMemo(() => {
-    if (gameState.possibleWords.length > 50) return { words: [], riskLevel: 0 }; // Only trigger when word count is manageable
+    if (gameState.possibleWords.length > 40) return { words: [], riskLevel: 0 }; // Only trigger when word count is manageable
     
     // Analyze first letter distribution
     const firstLetterCounts: Record<string, number> = {};
@@ -623,65 +615,38 @@ export default function WordleSolver() {
     const maxCount = Math.max(...Object.values(firstLetterCounts));
     const riskRatio = maxCount / totalWords;
     
-    // Determine if Pillar of Doom should trigger with different thresholds
+    // Much more aggressive thresholds for pillar detection
     const thresholds = gameState.strategyMode === 'conservative' 
-      ? { trigger: 0.20, pillarBreaker: 0.15, maxWords: 30 } // Conservative: lower thresholds
-      : { trigger: 0.30, pillarBreaker: 0.25, maxWords: 20 }; // Aggressive: higher thresholds
+      ? { trigger: 0.15, pillarBreaker: 0.12, maxWords: 25 } // Conservative: very low thresholds
+      : { trigger: 0.25, pillarBreaker: 0.20, maxWords: 15 }; // Aggressive: higher but still strict
     
     if (letters.length <= 2 || riskRatio < thresholds.pillarBreaker) {
       return { words: [], riskLevel: 0 };
     }
     
-    // Determine risk level for UI
-    let riskLevel = 0;
-    if (riskRatio >= thresholds.trigger) {
-      riskLevel = 2; // High risk - show pillar breaker
-    } else if (riskRatio >= thresholds.pillarBreaker) {
-      riskLevel = 1; // Medium risk - show in suggestions
-    }
+    // Find the dominant letter
+    const dominantLetter = Object.entries(firstLetterCounts)
+      .sort(([,a], [,b]) => b - a)[0][0];
     
-    // Find the best letters to test first position
-    const letterFrequency = getLetterFrequency();
-    const sortedLetters = letters
-      .map(letter => ({
-        letter,
-        count: firstLetterCounts[letter],
-        frequency: letterFrequency[letter] || 0,
-        riskRatio: firstLetterCounts[letter] / totalWords
-      }))
-      .sort((a, b) => b.riskRatio - a.riskRatio);
+    // Generate specific pillar breaker words - words that DON'T start with dominant letter but test other letters
+    const otherLetters = letters.filter(l => l !== dominantLetter);
+    const pillarBreakers: string[] = [];
     
-    // Create strategic test words using high-frequency letters
-    const topLetters = sortedLetters.slice(0, Math.min(4, sortedLetters.length));
-    const testWords: string[] = [];
-    
-    // Generate words that test these first letters
-    topLetters.forEach(({ letter }) => {
-      // Find words that start with this letter and have other common letters
-      const candidateWords = gameState.possibleWords.filter(word => 
-        word[0] === letter && 
-        [...new Set(word.split(''))].length >= 4 // Prefer words with unique letters
-      );
-      
-      if (candidateWords.length > 0) {
-        // Score candidates by letter diversity and frequency
-        const scored = candidateWords.map(word => {
-          const uniqueLetters = [...new Set(word.split(''))];
-          const diversityScore = uniqueLetters.reduce((sum, l) => sum + (letterFrequency[l] || 0), 0);
-          return { word, score: diversityScore };
-        }).sort((a, b) => b.score - a.score);
-        
-        testWords.push(scored[0].word);
-      }
+    // Create words that test the risky letters without being potential solutions
+    otherLetters.forEach(letter => {
+      const testWords = gameState.possibleWords
+        .filter(word => word[0] === letter && word !== gameState.targetWord)
+        .slice(0, 2); // Take 2 words per letter for testing
+      pillarBreakers.push(...testWords);
     });
     
-    return { 
-      words: testWords.slice(0, riskLevel >= 2 ? 2 : 1), 
-      riskLevel,
-      riskRatio,
-      dominantLetter: sortedLetters[0]?.letter || ''
+    return {
+      words: pillarBreakers.slice(0, 5), // Limit to top 5 pillar breakers
+      riskLevel: riskRatio >= thresholds.trigger ? 2 : 1,
+      dominantLetter,
+      riskRatio
     };
-  }, [gameState.possibleWords, gameState.strategyMode, getLetterFrequency]);
+  }, [gameState.possibleWords.length, gameState.guesses.length, gameState.strategyMode]);
 
   const suggestedWords = useMemo(() => {
     if (gameState.possibleWords.length <= 5) {
@@ -696,8 +661,6 @@ export default function WordleSolver() {
     
     // If Pillar of Doom detected, integrate strategic words
     if (pillarOfDoom.words.length > 0) {
-      console.log('Pillar of Doom detected! Risk level:', pillarOfDoom.riskLevel, 'Strategic test words:', pillarOfDoom.words);
-      
       if (pillarOfDoom.riskLevel >= 2) {
         // High risk - show pillar breaker words prominently
         const pillarWords = pillarOfDoom.words.map(word => ({ 
@@ -714,8 +677,6 @@ export default function WordleSolver() {
           score: 8888, 
           isPillarBreaker: true 
         };
-        
-        // Insert pillar word at the top
         return [pillarWordObj, ...baseWords.slice(0, 4)];
       }
     }
@@ -723,7 +684,7 @@ export default function WordleSolver() {
     return baseWords.slice(0, 5);
   }, [gameState.possibleWords, scoreWord, detectPillarOfDoom]);
 
-  // Detect pillars/cliffs - character patterns that could eliminate many words
+  // Memoized letter frequency for statistics (different from scoring frequency)
   const detectPillars = useMemo(() => {
     if (gameState.guesses.length === 0 || gameState.possibleWords.length <= 20) {
       return [];
@@ -810,7 +771,7 @@ export default function WordleSolver() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center p-1">
-      <div className="w-full max-w-3xl">
+      <div className="w-full max-w-6xl">
         <div className="flex items-center justify-between mb-3">
           <Link
             href="/home"
@@ -896,13 +857,13 @@ export default function WordleSolver() {
                     <div className="ml-2 flex flex-col items-center justify-center">
                       <div className="text-xs text-gray-400 mb-0.5">Strength</div>
                       <div className={`text-xs font-bold px-1.5 py-0.5 rounded ${
-                        calculateGuessStrength(gameState.guesses[rowIndex].word, gameState.possibleWords) >= 70
+                        calculateGuessStrength(gameState.guesses[rowIndex].word) >= 70
                           ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                          : calculateGuessStrength(gameState.guesses[rowIndex].word, gameState.possibleWords) >= 40
+                          : calculateGuessStrength(gameState.guesses[rowIndex].word) >= 40
                           ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
                           : 'bg-red-500/20 text-red-300 border border-red-500/30'
                       }`}>
-                        {calculateGuessStrength(gameState.guesses[rowIndex].word, gameState.possibleWords)}%
+                        {calculateGuessStrength(gameState.guesses[rowIndex].word)}%
                       </div>
                     </div>
                   )}
@@ -1022,6 +983,14 @@ export default function WordleSolver() {
                         {calculateExpectedSolve()}% solve
                       </div>
                     </div>
+                    
+                    {/* Pillar detection indicator */}
+                    {detectPillarOfDoom.words.length > 0 && (
+                      <div className="mt-1 flex items-center gap-1">
+                        <div className="w-1 h-1 bg-orange-500 rounded-full"></div>
+                        <div className="text-orange-300 text-xs">Pillar detected</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
