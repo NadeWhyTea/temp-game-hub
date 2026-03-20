@@ -608,25 +608,56 @@ export default function WordleSolver() {
     const dominantLetter = Object.entries(firstLetterCounts)
       .sort(([,a], [,b]) => b - a)[0][0];
     
-    // Generate specific pillar breaker words - words that DON'T start with dominant letter but test other letters
-    const otherLetters = letters.filter(l => l !== dominantLetter);
-    const pillarBreakers: string[] = [];
-    
-    // Create words that test the risky letters without being potential solutions
-    otherLetters.forEach(letter => {
-      const testWords = gameState.possibleWords
-        .filter(word => word[0] === letter && word !== gameState.targetWord)
-        .slice(0, 2); // Take 2 words per letter for testing
-      pillarBreakers.push(...testWords);
+    // Get letters that have already been used in guesses
+    const usedLetters = new Set<string>();
+    gameState.guesses.forEach(guess => {
+      guess.word.split('').forEach(letter => usedLetters.add(letter));
     });
     
+    // Get letters that are already confirmed correct (green) or present (yellow)
+    const confirmedLetters = new Set<string>();
+    const presentLetters = new Set<string>();
+    gameState.guesses.forEach(guess => {
+      guess.states.forEach((state, index) => {
+        const letter = guess.word[index];
+        if (state === 'correct') confirmedLetters.add(letter);
+        else if (state === 'present') presentLetters.add(letter);
+      });
+    });
+    
+    // Find words that use ONLY new letters (not used, not confirmed, not present)
+    const pillarBreakers = gameState.possibleWords
+      .filter(word => {
+        // Exclude words that have already been guessed
+        const alreadyGuessed = gameState.guesses.some(guess => guess.word === word);
+        if (alreadyGuessed) return false;
+        
+        // Check if word uses only new letters
+        const wordLetters = word.split('');
+        const usesOnlyNewLetters = wordLetters.every(letter => 
+          !usedLetters.has(letter) && 
+          !confirmedLetters.has(letter) && 
+          !presentLetters.has(letter)
+        );
+        
+        return usesOnlyNewLetters;
+      })
+      // Prioritize words with the most unique new letters
+      .map(word => ({
+        word,
+        uniqueNewLetters: new Set(word.split('')).size
+      }))
+      .sort((a, b) => b.uniqueNewLetters - a.uniqueNewLetters)
+      .slice(0, 5)
+      .map(item => item.word);
+    
     return {
-      words: pillarBreakers.slice(0, 5), // Limit to top 5 pillar breakers
+      words: pillarBreakers,
       riskLevel: riskRatio >= thresholds.trigger ? 2 : 1,
       dominantLetter,
       riskRatio
     };
-  }, [gameState.possibleWords.length, gameState.guesses.length, gameState.strategyMode]);
+  }, [gameState.possibleWords.length, gameState.guesses.length, gameState.strategyMode, gameState.guesses]);
 
   const suggestedWords = useMemo(() => {
     if (gameState.possibleWords.length <= 5) {
