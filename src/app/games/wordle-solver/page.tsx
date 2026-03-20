@@ -360,9 +360,28 @@ export default function WordleSolver() {
     const pillarBreakers = gameState.possibleWords
       .filter(word => {
         if (gameState.guesses.some(g => g.word === word)) return false;
-        return word.split('').every(l => !usedLetters.has(l) && !confirmedLetters.has(l) && !presentLetters.has(l));
+        
+        const wordLetters = word.split('');
+        const unusedLetters = wordLetters.filter(l => !usedLetters.has(l));
+        const newLettersCount = unusedLetters.length;
+        
+        // Require at least 2-3 completely new letters for pillar breaking
+        const minNewLetters = gameState.possibleWords.length <= 20 ? 2 : 3;
+        if (newLettersCount < minNewLetters) return false;
+        
+        // Avoid words that use confirmed letters in wrong positions
+        for (let i = 0; i < 5; i++) {
+          const letter = word[i];
+          if (confirmedLetters.has(letter) && !gameState.guesses.some(g => 
+            g.word[i] === letter && g.states[i] === 'correct'
+          )) {
+            return false;
+          }
+        }
+        
+        return true;
       })
-      .map(word => ({ word, uniqueNewLetters: new Set(word.split('')).size }))
+      .map(word => ({ word, uniqueNewLetters: new Set(word.split('').filter(l => !usedLetters.has(l))).size }))
       .sort((a, b) => b.uniqueNewLetters - a.uniqueNewLetters)
       .slice(0, 5)
       .map(item => item.word);
