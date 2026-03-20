@@ -36,13 +36,18 @@ export async function fetchWordList(): Promise<string[]> {
 
 export async function fetchTodayWordleWord(allWords: string[]): Promise<string> {
   try {
-    const response = await fetch('https://wordle.votee.dev:8000/daily');
+    const response = await fetch('/nyt-answers.json');
     if (response.ok) {
-      const data = await response.json();
-      return data.word.toUpperCase();
+      const answers = await response.json();
+      const START_DATE = new Date(2021, 5, 19); // June 19, 2021
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dayIndex = Math.floor((today.getTime() - START_DATE.getTime()) / 86400000);
+      const word = answers[dayIndex % answers.length];
+      return word.toUpperCase();
     }
   } catch {
-    console.warn("Failed to fetch today's Wordle word, using random word");
+    console.warn("Failed to fetch NYT answers, using random word");
   }
   return allWords[Math.floor(Math.random() * allWords.length)];
 }
