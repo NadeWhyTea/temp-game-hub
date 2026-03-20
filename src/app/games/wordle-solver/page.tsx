@@ -336,16 +336,35 @@ export default function WordleSolver() {
 
   const initializeGame = async () => {
     console.log('initializeGame called - current mode:', gameState.gameMode, 'current word:', gameState.targetWord);
-    const newState = await createWordleGame(gameState.gameMode, gameState.strategyMode);
-    console.log('initializeGame - new state:', {
-      gameMode: newState.gameMode,
-      targetWord: newState.targetWord,
-      isGameOver: newState.isGameOver,
-      isWon: newState.isWon,
-      currentGuess: newState.currentGuess,
-      possibleWords: newState.possibleWords.length
-    });
-    setGameState(newState);
+    try {
+      const newState = await createWordleGame(gameState.gameMode, gameState.strategyMode);
+      console.log('initializeGame - new state:', {
+        gameMode: newState.gameMode,
+        targetWord: newState.targetWord,
+        isGameOver: newState.isGameOver,
+        isWon: newState.isWon,
+        currentGuess: newState.currentGuess,
+        possibleWords: newState.possibleWords.length
+      });
+      setGameState(newState);
+    } catch (error) {
+      console.error('initializeGame failed:', error);
+      // Fallback to a working state
+      setGameState({
+        targetWord: 'REHAB',
+        guesses: [],
+        currentGuess: '',
+        isGameOver: false,
+        isWon: false,
+        possibleWords: [],
+        allWords: [],
+        isLoading: false,
+        gameMode: 'free-play',
+        strategyMode: 'conservative',
+        showContinuePrompt: false,
+        gameStats: null,
+      });
+    }
   };
 
   // Initialize game on mount
