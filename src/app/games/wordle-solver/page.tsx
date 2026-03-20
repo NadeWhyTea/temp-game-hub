@@ -71,6 +71,26 @@ async function fetchTodayWordleWord(allWords: string[]): Promise<string> {
 }
 
 async function fetchNYTWordleWord(): Promise<string> {
+  // First try local calculation using NYT answers
+  try {
+    const response = await fetch('/nyt-answers.json');
+    if (response.ok) {
+      const answers = await response.json();
+      const START_DATE = new Date(2021, 5, 19); // June 19, 2021
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dayIndex = Math.floor((today.getTime() - START_DATE.getTime()) / 86400000);
+      const word = answers[dayIndex % answers.length];
+      if (word && word.length === 5) {
+        console.log('Local NYT calculation success:', word.toUpperCase());
+        return word.toUpperCase();
+      }
+    }
+  } catch (error) {
+    console.warn("Local NYT calculation failed:", error);
+  }
+
+  // Fallback to external APIs if local calculation fails
   try {
     // Try multiple reliable sources for today's Wordle word
     const sources = [
@@ -365,7 +385,7 @@ export default function WordleSolver() {
         gameStats: null,
       });
     }
-  }, [gameState.gameMode, gameState.strategyMode, gameState.targetWord]);
+  }, [gameState.gameMode, gameState.strategyMode]);
 
   // Initialize game on mount
   useEffect(() => {
