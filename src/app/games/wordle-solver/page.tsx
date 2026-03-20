@@ -8,7 +8,7 @@ export type LetterState = 'correct' | 'present' | 'absent' | 'empty';
 export interface Guess {
   word: string;
   states: LetterState[];
-  strength?: number; // Store strength at time of guess
+  strength?: number;
 }
 
 export interface WordleState {
@@ -20,9 +20,8 @@ export interface WordleState {
   possibleWords: string[];
   allWords: string[];
   isLoading: boolean;
-  gameMode: 'nyt-daily' | 'free-play';
+  gameMode: 'free-play';
   strategyMode: 'conservative' | 'aggressive';
-  showContinuePrompt: boolean;
   gameStats: {
     guessesUsed: number;
     timeTaken: number;
@@ -30,7 +29,6 @@ export interface WordleState {
   } | null;
 }
 
-// Small fallback list used only if /public/words.json fails to load
 const FALLBACK_WORDS = [
   'ABOUT', 'ABOVE', 'ABUSE', 'ACTOR', 'ACUTE', 'ADMIT', 'ADULT', 'AFTER', 'AGAIN', 'AGENT',
   'AGREE', 'AHEAD', 'ALARM', 'ALERT', 'ALIEN', 'ALIGN', 'ALIVE', 'ALLOW', 'ALONE', 'ALONG',
@@ -49,7 +47,6 @@ async function fetchWordList(): Promise<string[]> {
     const res = await fetch('/words.json');
     if (!res.ok) throw new Error('Failed to load words.json');
     const data = await res.json();
-    // Support both a plain array and an object with a "words" or "answers" key
     const list: string[] = Array.isArray(data) ? data : (data.words ?? data.answers ?? []);
     return list.map((w: string) => w.toUpperCase()).filter((w: string) => w.length === 5);
   } catch (e) {
@@ -58,144 +55,11 @@ async function fetchWordList(): Promise<string[]> {
   }
 }
 
-async function fetchTodayWordleWord(allWords: string[]): Promise<string> {
-  try {
-    const response = await fetch('https://wordle.votee.dev:8000/daily');
-    if (response.ok) {
-      const data = await response.json();
-      return data.word.toUpperCase();
-    }
-  } catch {
-    console.warn("Failed to fetch today's Wordle word, using random word");
-  }
-  return allWords[Math.floor(Math.random() * allWords.length)];
-}
-
-async function fetchNYTWordleWord(): Promise<string> {
-  // First try local calculation using NYT answers
-  try {
-    const response = await fetch('/nyt-answers.json');
-    if (response.ok) {
-      const answers = await response.json();
-      const START_DATE = new Date(2021, 5, 19); // June 19, 2021
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const dayIndex = Math.floor((today.getTime() - START_DATE.getTime()) / 86400000);
-      const word = answers[dayIndex % answers.length];
-      if (word && word.length === 5) {
-        console.log('Local NYT calculation success:', word.toUpperCase());
-        return word.toUpperCase();
-      }
-    }
-  } catch (error) {
-    console.warn("Local NYT calculation failed:", error);
-  }
-
-  // Fallback to external APIs if local calculation fails
-  try {
-    // Try multiple reliable sources for today's Wordle word
-    const sources = [
-      {
-        url: 'https://api.frontendmasters.com/v1/wordle',
-        parser: (data: { word?: string }) => data?.word,
-      },
-      {
-        url: 'https://wordle-api.vercel.app/word',
-        parser: (data: { word?: string }) => data?.word,
-      },
-      {
-        url: 'https://www.nytimes.com/svc/wordle/v2/answers.json',
-        parser: (data: { results?: Array<{ word?: string }> }) => {
-          // Get the most recent word from NYT API
-          if (data.results && data.results.length > 0) {
-            const latest = data.results[data.results.length - 1];
-            return latest.word;
-          }
-          return null;
-        },
-      },
-      {
-        url: 'https://api.jsonbin.io/v3/b/60f8b8c9e4b6641b0a8b8b8c',
-        parser: (data: { record?: Record<string, string> }) => {
-          // Alternative JSONBin source
-          const today = new Date().toISOString().split('T')[0];
-          return data.record?.[today];
-        },
-      }
-    ];
-
-    for (const source of sources) {
-      try {
-        console.log(`Trying source: ${source.url}`);
-        const response = await fetch(source.url);
-        if (response.ok) {
-          const data = await response.json();
-          console.log(`Response from ${source.url}:`, data);
-          
-          const word = source.parser(data);
-          if (word && typeof word === 'string' && word.length === 5) {
-            console.log(`Found word from ${source.url}:`, word.toUpperCase());
-            return word.toUpperCase();
-          }
-        }
-      } catch (error) {
-        console.warn(`Failed with ${source.url}:`, error);
-        continue;
-      }
-    }
-  } catch (error) {
-    console.warn("All API attempts failed:", error);
-  }
-  
-  console.warn("All NYT API attempts failed, trying fallback Wordle API");
-  // Fallback to working Wordle API
-  try {
-    const fallbackWord = await fetchTodayWordleWord(await fetchWordList());
-    console.log('Fallback Wordle API success:', fallbackWord);
-    return fallbackWord;
-  } catch (error) {
-    console.warn("Fallback Wordle API also failed:", error);
-  }
-  
-  // Manual override for today's correct NYT Wordle word
-  const today = new Date().toISOString().split('T')[0];
-  const knownWords: Record<string, string> = {
-    '2026-03-19': 'REHAB',
-    '2026-03-20': 'TULIP', // Example - update with actual words
-    '2026-03-21': 'MOUSE', // Example - update with actual words
-  };
-  
-  if (knownWords[today]) {
-    console.log(`Using manual override for ${today}:`, knownWords[today]);
-    return knownWords[today];
-  }
-  
-  // Final fallback
-  console.warn("Using fallback word");
-  return 'REHAB';
-}
-
 export async function createWordleGame(
-  gameMode: 'nyt-daily' | 'free-play' = 'nyt-daily',
   strategyMode: 'conservative' | 'aggressive' = 'conservative'
 ): Promise<WordleState> {
   const allWords = await fetchWordList();
-
-  let targetWord: string;
-
-  if (gameMode === 'nyt-daily') {
-    targetWord = await fetchNYTWordleWord();
-    console.log('NYT Daily Wordle - Target word:', targetWord);
-  } else {
-    console.log('Free Play mode - All words count:', allWords.length);
-    if (allWords.length === 0) {
-      console.warn('No words available for Free Play mode!');
-      targetWord = 'ERROR';
-    } else {
-      targetWord = allWords[Math.floor(Math.random() * allWords.length)];
-      console.log('Free Play - Selected random word:', targetWord);
-    }
-  }
+  const targetWord = allWords[Math.floor(Math.random() * allWords.length)];
 
   return {
     targetWord,
@@ -206,9 +70,8 @@ export async function createWordleGame(
     possibleWords: [...allWords],
     allWords,
     isLoading: false,
-    gameMode,
+    gameMode: 'free-play',
     strategyMode,
-    showContinuePrompt: false,
     gameStats: null,
   };
 }
@@ -218,7 +81,6 @@ export function evaluateGuess(guess: string, targetWord: string): LetterState[] 
   const targetLetters = targetWord.split('');
   const guessLetters = guess.split('');
 
-  // First pass: correct positions
   for (let i = 0; i < 5; i++) {
     if (guessLetters[i] === targetLetters[i]) {
       states[i] = 'correct';
@@ -226,16 +88,12 @@ export function evaluateGuess(guess: string, targetWord: string): LetterState[] 
       guessLetters[i] = '_';
     }
   }
-
-  // Second pass: present letters
   for (let i = 0; i < 5; i++) {
     if (guessLetters[i] !== '_' && targetLetters.includes(guessLetters[i])) {
       states[i] = 'present';
       targetLetters[targetLetters.indexOf(guessLetters[i])] = '_';
     }
   }
-
-  // Third pass: absent letters
   for (let i = 0; i < 5; i++) {
     if (guessLetters[i] !== '_' && states[i] === 'empty') {
       states[i] = 'absent';
@@ -257,14 +115,12 @@ export function filterPossibleWords(
         const state = guess.states[i];
 
         if (state === 'correct' && wordLetter !== guessLetter) return false;
-
         if (state === 'absent' && word.includes(guessLetter)) {
           const hasPresent = guess.states.some(
             (s, j) => s === 'present' && guess.word[j] === guessLetter
           );
           if (!hasPresent) return false;
         }
-
         if (state === 'present' && !word.includes(guessLetter)) return false;
         if (state === 'present' && wordLetter === guessLetter) return false;
       }
@@ -348,108 +204,44 @@ export default function WordleSolver() {
     possibleWords: [],
     allWords: [],
     isLoading: true,
-    gameMode: 'nyt-daily',
+    gameMode: 'free-play',
     strategyMode: 'conservative',
-    showContinuePrompt: false,
     gameStats: null,
   });
   const [showTarget, setShowTarget] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  const initializeGame = useCallback(async () => {
-    console.log('initializeGame called - current mode:', gameState.gameMode, 'current word:', gameState.targetWord);
+  const initializeGame = useCallback(async (strategyMode: 'conservative' | 'aggressive') => {
     try {
-      const newState = await createWordleGame(gameState.gameMode, gameState.strategyMode);
-      console.log('initializeGame - new state:', {
-        gameMode: newState.gameMode,
-        targetWord: newState.targetWord,
-        isGameOver: newState.isGameOver,
-        isWon: newState.isWon,
-        currentGuess: newState.currentGuess,
-        possibleWords: newState.possibleWords.length
-      });
+      const newState = await createWordleGame(strategyMode);
       setGameState(newState);
     } catch (error) {
       console.error('initializeGame failed:', error);
-      // Fallback to a working state
-      setGameState({
-        targetWord: 'REHAB',
-        guesses: [],
-        currentGuess: '',
-        isGameOver: false,
-        isWon: false,
-        possibleWords: [],
-        allWords: [],
+      setGameState(prev => ({
+        ...prev,
         isLoading: false,
-        gameMode: 'free-play',
-        strategyMode: 'conservative',
-        showContinuePrompt: false,
-        gameStats: null,
-      });
+      }));
     }
-  }, [gameState.gameMode, gameState.strategyMode, gameState.targetWord]);
+  }, []);
 
-  // Initialize game on mount
   useEffect(() => {
-    const initGame = async () => {
-      await initializeGame();
-    };
-    initGame();
+    initializeGame('conservative');
   }, [initializeGame]);
 
   const keyboardState = getKeyboardState(gameState.guesses);
 
-  const toggleStrategyMode = () => {
-    setGameState(prev => ({ ...prev, strategyMode: prev.strategyMode === 'conservative' ? 'aggressive' : 'conservative' }));
-    // Remove focus from button to prevent Enter key from triggering it again
-    (document.activeElement as HTMLElement)?.blur();
-  };
-
-  const toggleGameMode = async () => {
-    const newMode = gameState.gameMode === 'nyt-daily' ? 'free-play' : 'nyt-daily';
-    const newState = await createWordleGame(newMode, gameState.strategyMode);
-    setGameState(newState);
-    // Remove focus from button to prevent Enter key from triggering it again
-    (document.activeElement as HTMLElement)?.blur();
-  };
-
   const resetGame = async () => {
-    console.log('resetGame called - current mode:', gameState.gameMode, 'current word:', gameState.targetWord);
-    console.log('resetGame - game state before:', {
-      isGameOver: gameState.isGameOver,
-      isWon: gameState.isWon,
-      currentGuess: gameState.currentGuess,
-      guesses: gameState.guesses.length
-    });
-    // Use a fresh copy of current state to avoid circular dependencies
-    const currentMode = gameState.gameMode;
-    const currentStrategy = gameState.strategyMode;
-    
-    const newState = await createWordleGame(currentMode, currentStrategy);
-    setGameState(newState);
     setShowTarget(false);
-    // Remove focus from button to prevent Enter key from triggering it again
-    (document.activeElement as HTMLElement)?.blur();
-  };
-
-  const continueToFreePlay = async () => {
-    const currentStrategy = gameState.strategyMode;
-    const newState = await createWordleGame('free-play', currentStrategy);
-    setGameState(newState);
-    // Remove focus from button to prevent Enter key from triggering it again
+    await initializeGame(gameState.strategyMode);
     (document.activeElement as HTMLElement)?.blur();
   };
 
   const getLetterColor = (state: LetterState): string => {
     switch (state) {
-      case "correct":
-        return "bg-green-500 text-white";
-      case "present":
-        return "bg-yellow-500 text-white";
-      case "absent":
-        return "bg-gray-500 text-white";
-      default:
-        return "bg-gray-700 text-gray-300";
+      case "correct": return "bg-green-500 text-white";
+      case "present": return "bg-yellow-500 text-white";
+      case "absent":  return "bg-gray-500 text-white";
+      default:        return "bg-gray-700 text-gray-300";
     }
   };
 
@@ -457,11 +249,10 @@ export default function WordleSolver() {
     const state = keyboardState.get(letter);
     if (state === "correct") return "bg-green-500 text-white";
     if (state === "present") return "bg-yellow-500 text-white";
-    if (state === "absent") return "bg-gray-500 text-white";
+    if (state === "absent")  return "bg-gray-500 text-white";
     return "bg-gray-600 text-gray-200 hover:bg-gray-500";
   };
 
-  // Calculate letter frequency from possible words
   const topLetters = useMemo(() => {
     const frequency: Record<string, number> = {};
     gameState.possibleWords.forEach((w) => {
@@ -470,32 +261,25 @@ export default function WordleSolver() {
       });
     });
     return Object.entries(frequency)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
-      .map(([letter, count]) => ({ letter, count, percentage: (count / gameState.possibleWords.length * 100).toFixed(1) }));
+      .map(([letter, count]) => ({
+        letter,
+        count,
+        percentage: (count / gameState.possibleWords.length * 100).toFixed(1),
+      }));
   }, [gameState.possibleWords]);
 
-  // Calculate expected solve based on strategy and current guesses
   const calculateExpectedSolve = useCallback(() => {
-    const guessesCount = gameState.guesses.length;
     const possibleWordsCount = gameState.possibleWords.length;
-    
     if (possibleWordsCount === 1) return 100;
     if (possibleWordsCount === 0) return 0;
-    
-    // Base calculation on remaining words
     const baseExpected = Math.max(0, 100 - (possibleWordsCount / 1000 * 100));
-    
-    // Adjust for strategy mode
     const strategyMultiplier = gameState.strategyMode === 'aggressive' ? 1.2 : 1.0;
-    
-    // Adjust for guesses used (more guesses = slightly lower expected since we've had more chances)
-    const guessPenalty = guessesCount * 2;
-    
-    const expectedSolve = Math.max(0, Math.min(100, (baseExpected * strategyMultiplier) - guessPenalty));
-    
-    return Math.round(expectedSolve);
+    const guessPenalty = gameState.guesses.length * 2;
+    return Math.round(Math.max(0, Math.min(100, (baseExpected * strategyMultiplier) - guessPenalty)));
   }, [gameState.possibleWords.length, gameState.guesses.length, gameState.strategyMode]);
+
   const letterFrequencyForScoring = useMemo(() => {
     const freq: Record<string, number> = {};
     gameState.possibleWords.forEach((w) => {
@@ -506,218 +290,134 @@ export default function WordleSolver() {
     return freq;
   }, [gameState.possibleWords]);
 
-  // Score words by letter coverage for suggestions
   const scoreWord = useCallback((word: string): number => {
     if (gameState.strategyMode === 'aggressive') {
-      // Aggressive mode: Much stronger emphasis on unique letters and information gain
       const uniqueLetters = new Set(word.split(''));
-      const baseScoreConst = [...uniqueLetters].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0);
-      
-      // Large bonus for words with all unique letters (max information)
+      const baseScore = [...uniqueLetters].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0);
       const uniquenessBonus = uniqueLetters.size === 5 ? 1000 : 0;
-      
-      // Strong bonus for words with common letters in high-frequency positions
       const positionBonus = word.split('').reduce((bonus, letter, pos) => {
         const posFrequency = letterFrequencyForScoring[letter] || 0;
-        // Much higher bonus for letters in earlier positions (0, 1, 2)
         const positionWeight = pos <= 2 ? 2.5 : 1;
         return bonus + (posFrequency > gameState.possibleWords.length * 0.15 ? 200 * positionWeight : 0);
       }, 0);
-      
-      // Penalize for known letter position conflicts
       let positionPenalty = 0;
       gameState.guesses.forEach(guess => {
         guess.states.forEach((state, index) => {
           const guessLetter = guess.word[index];
           const wordLetter = word[index];
-          
-          // If we know this letter exists but is in wrong position in guess
-          if (state === 'present' && wordLetter === guessLetter) {
-            positionPenalty += 500; // Heavy penalty for same wrong position
-          }
-          
-          // If we know this letter is correct in this position, and word doesn't match
-          if (state === 'correct' && wordLetter !== guessLetter) {
-            positionPenalty += 1000; // Very heavy penalty for not using known correct position
-          }
+          if (state === 'present' && wordLetter === guessLetter) positionPenalty += 500;
+          if (state === 'correct' && wordLetter !== guessLetter) positionPenalty += 1000;
         });
       });
-      
-      return baseScoreConst + uniquenessBonus + positionBonus - positionPenalty;
+      return baseScore + uniquenessBonus + positionBonus - positionPenalty;
     } else {
-      // Conservative mode: Much more conservative scoring, focus on safe letter coverage
-      const baseScoreConst = [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0) * 0.5;
-      
-      // Apply same position penalties for conservative mode
+      const baseScore = [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0) * 0.5;
       let positionPenalty = 0;
       gameState.guesses.forEach(guess => {
         guess.states.forEach((state, index) => {
           const guessLetter = guess.word[index];
           const wordLetter = word[index];
-          
-          if (state === 'present' && wordLetter === guessLetter) {
-            positionPenalty += 250; // Penalty for same wrong position
-          }
-          
-          if (state === 'correct' && wordLetter !== guessLetter) {
-            positionPenalty += 500; // Penalty for not using known correct position
-          }
+          if (state === 'present' && wordLetter === guessLetter) positionPenalty += 250;
+          if (state === 'correct' && wordLetter !== guessLetter) positionPenalty += 500;
         });
       });
-      
-      return baseScoreConst - positionPenalty;
+      return baseScore - positionPenalty;
     }
   }, [letterFrequencyForScoring, gameState.strategyMode, gameState.guesses, gameState.possibleWords]);
 
-  // Detect Pillar of Doom scenarios - risky first letter distributions that could cause losses
   const detectPillarOfDoom = useMemo(() => {
-    if (gameState.possibleWords.length > 40) return { words: [], riskLevel: 0 }; // Only trigger when word count is manageable
-    
-    // Analyze first letter distribution
+    if (gameState.possibleWords.length > 40) return { words: [], riskLevel: 0 };
+
     const firstLetterCounts: Record<string, number> = {};
     gameState.possibleWords.forEach(word => {
-      const firstLetter = word[0];
-      firstLetterCounts[firstLetter] = (firstLetterCounts[firstLetter] || 0) + 1;
+      firstLetterCounts[word[0]] = (firstLetterCounts[word[0]] || 0) + 1;
     });
-    
-    // Calculate risk of loss scenario
-    const totalWords = gameState.possibleWords.length;
+
     const letters = Object.keys(firstLetterCounts);
     const maxCount = Math.max(...Object.values(firstLetterCounts));
-    const riskRatio = maxCount / totalWords;
-    
-    // Much more aggressive thresholds for pillar detection
-    const thresholds = gameState.strategyMode === 'conservative' 
-      ? { trigger: 0.15, pillarBreaker: 0.12, maxWords: 25 } // Conservative: very low thresholds
-      : { trigger: 0.25, pillarBreaker: 0.20, maxWords: 15 }; // Aggressive: higher but still strict
-    
+    const riskRatio = maxCount / gameState.possibleWords.length;
+
+    const thresholds = gameState.strategyMode === 'conservative'
+      ? { trigger: 0.15, pillarBreaker: 0.12 }
+      : { trigger: 0.25, pillarBreaker: 0.20 };
+
     if (letters.length <= 2 || riskRatio < thresholds.pillarBreaker) {
       return { words: [], riskLevel: 0 };
     }
-    
-    // Find the dominant letter
-    const dominantLetter = Object.entries(firstLetterCounts)
-      .sort(([,a], [,b]) => b - a)[0][0];
-    
-    // Get letters that have already been used in guesses
+
+    const dominantLetter = Object.entries(firstLetterCounts).sort(([, a], [, b]) => b - a)[0][0];
     const usedLetters = new Set<string>();
-    gameState.guesses.forEach(guess => {
-      guess.word.split('').forEach(letter => usedLetters.add(letter));
-    });
-    
-    // Get letters that are already confirmed correct (green) or present (yellow)
     const confirmedLetters = new Set<string>();
     const presentLetters = new Set<string>();
+
     gameState.guesses.forEach(guess => {
+      guess.word.split('').forEach(letter => usedLetters.add(letter));
       guess.states.forEach((state, index) => {
         const letter = guess.word[index];
         if (state === 'correct') confirmedLetters.add(letter);
         else if (state === 'present') presentLetters.add(letter);
       });
     });
-    
-    // Find words that use ONLY new letters (not used, not confirmed, not present)
+
     const pillarBreakers = gameState.possibleWords
       .filter(word => {
-        // Exclude words that have already been guessed
-        const alreadyGuessed = gameState.guesses.some(guess => guess.word === word);
-        if (alreadyGuessed) return false;
-        
-        // Check if word uses only new letters
-        const wordLetters = word.split('');
-        const usesOnlyNewLetters = wordLetters.every(letter => 
-          !usedLetters.has(letter) && 
-          !confirmedLetters.has(letter) && 
-          !presentLetters.has(letter)
-        );
-        
-        return usesOnlyNewLetters;
+        if (gameState.guesses.some(g => g.word === word)) return false;
+        return word.split('').every(l => !usedLetters.has(l) && !confirmedLetters.has(l) && !presentLetters.has(l));
       })
-      // Prioritize words with the most unique new letters
-      .map(word => ({
-        word,
-        uniqueNewLetters: new Set(word.split('')).size
-      }))
+      .map(word => ({ word, uniqueNewLetters: new Set(word.split('')).size }))
       .sort((a, b) => b.uniqueNewLetters - a.uniqueNewLetters)
       .slice(0, 5)
       .map(item => item.word);
-    
-    return {
-      words: pillarBreakers,
-      riskLevel: riskRatio >= thresholds.trigger ? 2 : 1,
-      dominantLetter,
-      riskRatio
-    };
+
+    return { words: pillarBreakers, riskLevel: riskRatio >= thresholds.trigger ? 2 : 1, dominantLetter, riskRatio };
   }, [gameState.possibleWords, gameState.strategyMode, gameState.guesses]);
 
   const suggestedWords = useMemo(() => {
     if (gameState.possibleWords.length <= 5) {
       return gameState.possibleWords.map(word => ({ word, score: 0, isPillarBreaker: false }));
     }
-    
-    // Check for Pillar of Doom scenarios first
+
     const pillarOfDoom = detectPillarOfDoom;
     const baseWords = gameState.possibleWords
       .map(word => ({ word, score: scoreWord(word), isPillarBreaker: false }))
       .sort((a, b) => b.score - a.score);
-    
-    // If Pillar of Doom detected, integrate strategic words
+
     if (pillarOfDoom.words.length > 0) {
       if (pillarOfDoom.riskLevel >= 2) {
-        // High risk - show pillar breaker words prominently
-        const pillarWords = pillarOfDoom.words.map(word => ({ 
-          word, 
-          score: 9999, 
-          isPillarBreaker: true 
-        }));
+        const pillarWords = pillarOfDoom.words.map(word => ({ word, score: 9999, isPillarBreaker: true }));
         return [...pillarWords, ...baseWords.slice(0, 3)];
       } else {
-        // Medium risk - integrate one pillar word into suggestions
-        const pillarWord = pillarOfDoom.words[0];
-        const pillarWordObj = { 
-          word: pillarWord, 
-          score: 8888, 
-          isPillarBreaker: true 
-        };
-        return [pillarWordObj, ...baseWords.slice(0, 4)];
+        return [{ word: pillarOfDoom.words[0], score: 8888, isPillarBreaker: true }, ...baseWords.slice(0, 4)];
       }
     }
-    
+
     return baseWords.slice(0, 5);
   }, [gameState.possibleWords, scoreWord, detectPillarOfDoom]);
 
-  // Get stored strength from guess or calculate if not available
   const getGuessStrength = useCallback((guess: Guess): number => {
-    // Return stored strength if available
-    if (guess.strength !== undefined) {
-      return guess.strength;
-    }
-    
-    // Fallback to calculation for older guesses without stored strength
+    if (guess.strength !== undefined) return guess.strength;
     if (gameState.possibleWords.length === 0) return 100;
-    
     const topSuggestedWord = suggestedWords[0]?.word;
     if (!topSuggestedWord) return 100;
-    
     const topScore = scoreWord(topSuggestedWord);
     const guessScore = scoreWord(guess.word);
-    
-    const strengthPercentage = Math.round((guessScore / topScore) * 100);
-    
-    return Math.min(100, strengthPercentage);
+    return Math.min(100, Math.round((guessScore / topScore) * 100));
   }, [suggestedWords, scoreWord, gameState.possibleWords.length]);
+
+  const toggleStrategyMode = () => {
+    const newMode = gameState.strategyMode === 'conservative' ? 'aggressive' : 'conservative';
+    setGameState(prev => ({ ...prev, strategyMode: newMode }));
+    (document.activeElement as HTMLElement)?.blur();
+  };
 
   const handleVirtualKey = (key: string) => {
     if (gameState.isGameOver) return;
-
     if (key === "ENTER") {
       if (gameState.currentGuess.length === 5) {
-        // Calculate strength based on current top suggestion before submitting
         const topSuggestedWord = suggestedWords[0]?.word;
         const topScore = topSuggestedWord ? scoreWord(topSuggestedWord) : 1000;
         const guessScore = scoreWord(gameState.currentGuess);
         const strength = Math.min(100, Math.round((guessScore / topScore) * 100));
-        
         setGameState((prev) => submitGuess(prev, prev.currentGuess, strength));
       }
     } else if (key === "BACK") {
@@ -731,11 +431,8 @@ export default function WordleSolver() {
     <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center p-1">
       <div className="w-full max-w-6xl">
         <div className="flex items-center justify-between mb-3">
-          <Link
-            href="/home"
-            className="text-white/70 hover:text-white transition-colors text-xs"
-          >
-            ← Back to Hub
+          <Link href="/games/wordle" className="text-white/70 hover:text-white transition-colors text-xs">
+            ← Back to Wordle Games
           </Link>
           <h1 className="text-lg font-bold text-white">Wordle Solver</h1>
           <div className="w-12" />
@@ -744,38 +441,25 @@ export default function WordleSolver() {
         <div className="text-center mb-4">
           <div className="flex items-center justify-center gap-3 mb-2">
             <span className="text-xs text-gray-400">
-              {gameState.gameMode === 'nyt-daily' ? 'Daily Wordle' : 'Free Play'}
-            </span>
-            <button
-              onClick={toggleGameMode}
-              className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
-            >
-              Switch to {gameState.gameMode === 'nyt-daily' ? 'Free Play' : 'Daily Wordle'}
-            </button>
-          </div>
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <span className="text-xs text-gray-400">
               Strategy: {gameState.strategyMode === 'conservative' ? 'Conservative' : 'Aggressive'}
             </span>
             <button
               onClick={toggleStrategyMode}
               className={`px-2 py-1 text-white text-xs rounded transition-colors ${
-                gameState.strategyMode === 'conservative' 
-                  ? 'bg-green-600 hover:bg-green-500' 
+                gameState.strategyMode === 'conservative'
+                  ? 'bg-blue-600 hover:bg-blue-500'
                   : 'bg-orange-600 hover:bg-orange-500'
               }`}
             >
               Switch to {gameState.strategyMode === 'conservative' ? 'Aggressive' : 'Conservative'}
             </button>
           </div>
-          
           {gameState.isLoading && (
-            <div className="text-yellow-400 text-xs mb-2">
-              Loading {gameState.gameMode === 'nyt-daily' ? "Daily Wordle" : "Free Play"} word...
-            </div>
+            <div className="text-yellow-400 text-xs mb-2">Loading words...</div>
           )}
         </div>
 
+        {/* Board */}
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-3 border border-white/20">
           <div className="flex gap-2 justify-center">
             <div className="grid grid-rows-6 gap-1 mb-3">
@@ -789,19 +473,12 @@ export default function WordleSolver() {
                         : rowIndex === gameState.guesses.length
                         ? gameState.currentGuess[colIndex] || ""
                         : "";
-                      const state = guess
-                        ? guess.states[colIndex]
-                        : "empty";
-
+                      const state = guess ? guess.states[colIndex] : "empty";
                       return (
                         <div
                           key={colIndex}
-                          className={`w-12 h-12 flex items-center justify-center text-lg font-bold rounded border ${getLetterColor(
-                            state
-                          )} ${
-                            state === "empty"
-                              ? "border-gray-600"
-                              : "border-transparent"
+                          className={`w-12 h-12 flex items-center justify-center text-lg font-bold rounded border ${getLetterColor(state)} ${
+                            state === "empty" ? "border-gray-600" : "border-transparent"
                           }`}
                         >
                           {letter}
@@ -809,17 +486,15 @@ export default function WordleSolver() {
                       );
                     })}
                   </div>
-                  
-                  {/* Strength indicator for completed guesses */}
                   {gameState.guesses[rowIndex] && (
                     <div className="ml-2 flex flex-col items-center justify-center">
                       <div className="text-xs text-gray-400 mb-0.5">Strength</div>
                       <div className={`text-xs font-bold px-1.5 py-0.5 rounded ${
                         getGuessStrength(gameState.guesses[rowIndex]) >= 70
-                          ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                          ? 'bg-green-500/20 text-green-300'
                           : getGuessStrength(gameState.guesses[rowIndex]) >= 40
-                          ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
-                          : 'bg-red-500/20 text-red-300 border-red-500/30'
+                          ? 'bg-yellow-500/20 text-yellow-300'
+                          : 'bg-red-500/20 text-red-300'
                       }`}>
                         {getGuessStrength(gameState.guesses[rowIndex])}%
                       </div>
@@ -830,47 +505,22 @@ export default function WordleSolver() {
             </div>
           </div>
 
-          {(gameState.isGameOver || gameState.possibleWords.length <= 10) && (
+          {gameState.isGameOver && (
             <div className="text-center mb-3">
               {gameState.isWon ? (
                 <div className="text-green-400 text-sm font-bold mb-1">
-                  🎉 Solved in {gameState.guesses.length} tries!
+                  🎉 Solved in {gameState.guesses.length} {gameState.guesses.length === 1 ? 'try' : 'tries'}!
                 </div>
-              ) : gameState.isGameOver ? (
+              ) : (
                 <div className="text-red-400 text-sm font-bold mb-1">
                   Game Over! Word: {gameState.targetWord}
-                </div>
-              ) : null}
-              <div className="text-xs text-gray-400">
-                Possible words: {gameState.possibleWords.length}
-              </div>
-              {gameState.possibleWords.length <= 10 && (
-                <div className="mt-1 text-xs text-gray-500 max-h-8 overflow-y-auto">
-                  {gameState.possibleWords.join(", ")}
                 </div>
               )}
             </div>
           )}
-
-          {/* Post-game analysis and continue prompt */}
-          {gameState.isGameOver && gameState.gameMode === 'nyt-daily' && (
-            <div className="bg-purple-600/20 border border-purple-400/30 rounded-lg p-3 mb-3">
-              <div className="text-center">
-                <h4 className="text-sm font-semibold text-purple-300 mb-2">Daily Complete!</h4>
-                <div className="text-xs text-gray-300 mb-2">
-                  Ready for more practice? Try Free Play mode with unlimited words.
-                </div>
-                <button
-                  onClick={continueToFreePlay}
-                  className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white text-xs rounded transition-colors"
-                >
-                  Continue to Free Play
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
+        {/* Statistics */}
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2 mb-3 border border-white/20">
           <div className="text-center">
             <h3 className="text-xs font-semibold text-white mb-1">Statistics</h3>
@@ -884,11 +534,10 @@ export default function WordleSolver() {
                 <div className="text-white font-bold">{gameState.guesses.length}/6</div>
               </div>
             </div>
-            
             {gameState.possibleWords.length > 0 && (
               <div className="mt-1">
                 <div className="flex flex-wrap gap-1 justify-center">
-                  {topLetters.slice(0, 6).map(({ letter, percentage }: { letter: string; percentage: string }) => (
+                  {topLetters.slice(0, 6).map(({ letter, percentage }) => (
                     <div key={letter} className="bg-white/20 text-gray-300 text-xs px-1 py-0.5 rounded border border-white/30">
                       {letter} ({percentage}%)
                     </div>
@@ -899,13 +548,12 @@ export default function WordleSolver() {
           </div>
         </div>
 
-        {/* Toggleable Suggested Words Panel */}
+        {/* Suggestions panel */}
         {!gameState.isGameOver && !gameState.isLoading && (
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1.5 mb-3 border border-white/20">
             <div className="text-center">
               {!showSuggestions ? (
-                /* Elegant collapsed state */
-                <div 
+                <div
                   className="relative cursor-pointer group"
                   onClick={() => setShowSuggestions(true)}
                 >
@@ -914,8 +562,8 @@ export default function WordleSolver() {
                       <div className="text-left">
                         <div className="text-white font-semibold text-xs mb-0.5">Suggestions</div>
                         <div className="text-gray-300 text-xs">
-                          {gameState.possibleWords.length <= 5 
-                            ? `${gameState.possibleWords.length} left` 
+                          {gameState.possibleWords.length <= 5
+                            ? `${gameState.possibleWords.length} left`
                             : `${gameState.possibleWords.length} possible`}
                         </div>
                       </div>
@@ -925,8 +573,6 @@ export default function WordleSolver() {
                         </svg>
                       </div>
                     </div>
-                    
-                    {/* Expected solve indicator */}
                     <div className="flex gap-1 mt-1">
                       <div className="px-1 py-0.5 text-xs font-medium rounded-full bg-white/10 text-white/70 border border-white/20">
                         {gameState.strategyMode === 'aggressive' ? 'Aggressive' : 'Conservative'}
@@ -944,12 +590,9 @@ export default function WordleSolver() {
                   </div>
                 </div>
               ) : (
-                /* Expanded suggestions panel */
                 <>
                   <div className="flex items-center justify-between mb-1.5">
-                    <h3 className="text-xs font-semibold text-white">
-                      Word Suggestions
-                    </h3>
+                    <h3 className="text-xs font-semibold text-white">Word Suggestions</h3>
                     <button
                       onClick={() => setShowSuggestions(false)}
                       className="p-0.5 bg-white/10 hover:bg-white/20 text-white rounded transition-colors"
@@ -959,14 +602,11 @@ export default function WordleSolver() {
                       </svg>
                     </button>
                   </div>
-                  
                   <div className="text-xs text-gray-400 mb-1.5">
-                    {gameState.possibleWords.length <= 5 
-                      ? `${gameState.possibleWords.length} words remaining` 
+                    {gameState.possibleWords.length <= 5
+                      ? `${gameState.possibleWords.length} words remaining`
                       : `${gameState.possibleWords.length} possible words`}
                   </div>
-                  
-                  {/* Expected solve and strategy info */}
                   <div className="bg-white/5 border border-white/10 rounded p-1.5 mb-1.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
@@ -986,20 +626,18 @@ export default function WordleSolver() {
                       </div>
                     </div>
                   </div>
-                  
                   <div className="space-y-0.5">
-                    {suggestedWords.map(({ word, score, isPillarBreaker }: { word: string; score: number; isPillarBreaker: boolean }, index: number) => (
+                    {suggestedWords.map(({ word, score, isPillarBreaker }, index) => (
                       <button
                         key={word}
                         onClick={() => {
                           setGameState(prev => ({ ...prev, currentGuess: word }));
-                          // Remove focus from button to prevent Enter key from triggering it again
                           (document.activeElement as HTMLElement)?.blur();
                         }}
                         className={`w-full p-1 rounded text-left transition-all text-xs ${
                           isPillarBreaker
                             ? "bg-orange-500/20 border border-orange-500/30 text-orange-300 hover:bg-orange-500/30"
-                            : index === 0 && gameState.possibleWords.length > 5 && !isPillarBreaker
+                            : index === 0 && gameState.possibleWords.length > 5
                               ? "bg-white/15 border border-white/20 text-white/80 hover:bg-white/20"
                               : "bg-white/5 border border-white/10 text-white/60 hover:bg-white/10"
                         }`}
@@ -1024,6 +662,7 @@ export default function WordleSolver() {
           </div>
         )}
 
+        {/* Keyboard */}
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-3 border border-white/20">
           {KEYBOARD_ROWS.map((row, rowIndex) => (
             <div key={rowIndex} className="flex justify-center gap-1.5 mb-1.5">
@@ -1032,17 +671,10 @@ export default function WordleSolver() {
                   key={key}
                   onClick={() => {
                     handleVirtualKey(key);
-                    // Remove focus from button to prevent Enter key from triggering it again
                     (document.activeElement as HTMLElement)?.blur();
                   }}
-                  className={`px-3 py-3 rounded font-semibold text-sm transition-colors ${getKeyboardKeyColor(
-                    key
-                  )} ${
-                    key === 'ENTER'
-                      ? 'px-6 text-xs'
-                      : key === 'BACK'
-                      ? 'px-5'
-                      : ''
+                  className={`px-3 py-3 rounded font-semibold text-sm transition-colors ${getKeyboardKeyColor(key)} ${
+                    key === 'ENTER' ? 'px-6 text-xs' : key === 'BACK' ? 'px-5' : ''
                   }`}
                 >
                   {key === "BACK" ? "⌫" : key}
