@@ -310,6 +310,29 @@ export default function WordleSolver() {
       .map(([letter, count]) => ({ letter, count, percentage: (count / gameState.possibleWords.length * 100).toFixed(1) }));
   };
 
+  // Score words by letter coverage for suggestions
+  const scoreWord = (word: string, possibleWords: string[]): number => {
+    const freq: Record<string, number> = {};
+    possibleWords.forEach((w) => {
+      [...new Set(w.split(""))].forEach((l) => {
+        freq[l] = (freq[l] || 0) + 1;
+      });
+    });
+    return [...new Set(word.split(""))].reduce((sum, l) => sum + (freq[l] || 0), 0);
+  };
+
+  const getSuggestedWords = () => {
+    if (gameState.possibleWords.length <= 5) {
+      return gameState.possibleWords.map(word => ({ word, score: 0 }));
+    }
+    
+    const scored = gameState.possibleWords
+      .map(word => ({ word, score: scoreWord(word, gameState.possibleWords) }))
+      .sort((a, b) => b.score - a.score);
+    
+    return scored.slice(0, 5);
+  };
+
   const handleVirtualKey = (key: string) => {
     if (gameState.isGameOver) return;
 
@@ -443,6 +466,38 @@ export default function WordleSolver() {
             )}
           </div>
         </div>
+
+        {/* Suggested Words Panel */}
+        {!gameState.isGameOver && !gameState.isLoading && (
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4 border border-white/20">
+            <div className="text-center mb-2">
+              <h3 className="text-sm font-semibold text-white mb-2">
+                {gameState.possibleWords.length <= 5 ? "Remaining Words" : "Suggested Words"}
+              </h3>
+              <div className="text-xs text-gray-400 mb-2">
+                {gameState.possibleWords.length > 5 && `${gameState.possibleWords.length} words left`}
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {getSuggestedWords().map(({ word, score }, index) => (
+                  <button
+                    key={word}
+                    onClick={() => setGameState(prev => ({ ...prev, currentGuess: word }))}
+                    className={`px-2 py-1 text-xs font-semibold rounded transition-colors ${
+                      index === 0 && gameState.possibleWords.length > 5
+                        ? "bg-purple-600 text-white"
+                        : "bg-purple-600/30 text-purple-200 hover:bg-purple-600/50"
+                    }`}
+                  >
+                    {word}
+                    {gameState.possibleWords.length > 5 && (
+                      <span className="text-xs opacity-75 ml-1">({score})</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4 border border-white/20">
           {KEYBOARD_ROWS.map((row, rowIndex) => (
