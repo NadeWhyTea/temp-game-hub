@@ -11,8 +11,6 @@ export interface Guess {
   strength?: number; // Store strength at time of guess
 }
 
-export interface WordleGuess extends Guess {}
-
 export interface WordleState {
   targetWord: string;
   guesses: Guess[];
@@ -249,7 +247,7 @@ export function evaluateGuess(guess: string, targetWord: string): LetterState[] 
 
 export function filterPossibleWords(
   possibleWords: string[],
-  guesses: WordleGuess[]
+  guesses: Guess[]
 ): string[] {
   return possibleWords.filter(word => {
     for (const guess of guesses) {
@@ -281,7 +279,7 @@ export function submitGuess(state: WordleState, guess: string, strength?: number
   }
 
   const states = evaluateGuess(guess, state.targetWord);
-  const newGuess: WordleGuess = { word: guess, states, strength };
+  const newGuess: Guess = { word: guess, states, strength };
   const newGuesses = [...state.guesses, newGuess];
 
   const isWon = guess === state.targetWord;
@@ -312,7 +310,7 @@ export function removeLetter(state: WordleState): WordleState {
   return state;
 }
 
-export function getKeyboardState(guesses: WordleGuess[]): Map<string, LetterState> {
+export function getKeyboardState(guesses: Guess[]): Map<string, LetterState> {
   const keyboardState = new Map<string, LetterState>();
 
   for (const guess of guesses) {
@@ -427,7 +425,7 @@ export default function WordleSolver() {
         setGameState((prev) => addLetter(prev, e.key.toUpperCase()));
       }
     },
-    [gameState.isGameOver, gameState.currentGuess.length]
+    [gameState.isGameOver, gameState.currentGuess.length, gameState.targetWord, scoreWord, suggestedWords, gameState.possibleWords]
   );
 
   useEffect(() => {
@@ -498,24 +496,18 @@ export default function WordleSolver() {
   };
 
   // Calculate letter frequency from possible words
-  const getLetterFrequency = () => {
-    const frequency: Record<string, number> = {};
-    gameState.possibleWords.forEach(word => {
-      for (let i = 0; i < 5; i++) {
-        const letter = word[i];
-        frequency[letter] = (frequency[letter] || 0) + 1;
-      }
-    });
-    return frequency;
-  };
-
   const topLetters = useMemo(() => {
-    const frequency = getLetterFrequency();
+    const frequency: Record<string, number> = {};
+    gameState.possibleWords.forEach((w) => {
+      [...new Set(w.split(""))].forEach((l) => {
+        frequency[l] = (frequency[l] || 0) + 1;
+      });
+    });
     return Object.entries(frequency)
       .sort(([,a], [,b]) => b - a)
       .slice(0, 10)
       .map(([letter, count]) => ({ letter, count, percentage: (count / gameState.possibleWords.length * 100).toFixed(1) }));
-  }, [getLetterFrequency, gameState.possibleWords]);
+  }, [gameState.possibleWords]);
 
   // Calculate expected solve based on strategy and current guesses
   const calculateExpectedSolve = useCallback(() => {
@@ -553,7 +545,7 @@ export default function WordleSolver() {
     if (gameState.strategyMode === 'aggressive') {
       // Aggressive mode: Much stronger emphasis on unique letters and information gain
       const uniqueLetters = new Set(word.split(''));
-      const baseScore = [...uniqueLetters].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0);
+      const baseScoreConst = [...uniqueLetters].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0);
       
       // Large bonus for words with all unique letters (max information)
       const uniquenessBonus = uniqueLetters.size === 5 ? 1000 : 0;
@@ -585,10 +577,10 @@ export default function WordleSolver() {
         });
       });
       
-      return baseScore + uniquenessBonus + positionBonus - positionPenalty;
+      return baseScoreConst + uniquenessBonus + positionBonus - positionPenalty;
     } else {
       // Conservative mode: Much more conservative scoring, focus on safe letter coverage
-      let baseScore = [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0) * 0.5;
+      const baseScoreConst = [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0) * 0.5;
       
       // Apply same position penalties for conservative mode
       let positionPenalty = 0;
@@ -607,7 +599,7 @@ export default function WordleSolver() {
         });
       });
       
-      return baseScore - positionPenalty;
+      return baseScoreConst - positionPenalty;
     }
   }, [letterFrequencyForScoring, gameState.strategyMode, gameState.possibleWords.length, gameState.guesses]);
 
@@ -748,77 +740,6 @@ export default function WordleSolver() {
     
     return Math.min(100, strengthPercentage);
   }, [suggestedWords, scoreWord, gameState.possibleWords.length]);
-
-  // Memoized letter frequency for statistics (different from scoring frequency)
-  const detectPillars = useMemo(() => {
-    if (gameState.guesses.length === 0 || gameState.possibleWords.length <= 20) {
-      return [];
-    }
-
-    // Analyze character positions across all possible words
-    const positionAnalysis: Record<number, Record<string, number>> = {};
-    for (let pos = 0; pos < 5; pos++) {
-      positionAnalysis[pos] = {};
-      gameState.possibleWords.forEach(word => {
-        const char = word[pos];
-        positionAnalysis[pos][char] = (positionAnalysis[pos][char] || 0) + 1;
-      });
-    }
-
-    // Find pillars - positions with very diverse characters
-    const pillars: Array<{
-      position: number;
-      pattern: string;
-      eliminationPower: number;
-      suggestedChars: Array<{ char: string; coverage: number }>;
-    }> = [];
-
-    for (let pos = 0; pos < 5; pos++) {
-      const chars = Object.keys(positionAnalysis[pos]);
-      const totalWords = gameState.possibleWords.length;
-      
-      // If this position has many different characters, it's a potential pillar
-      if (chars.length >= 8) {
-        // Calculate elimination power for each character
-        const charAnalysis = chars.map(char => {
-          const coverage = positionAnalysis[pos][char];
-          const eliminationPower = totalWords - coverage;
-          return { char, coverage, eliminationPower };
-        }).sort((a, b) => b.eliminationPower - a.eliminationPower);
-
-        if (charAnalysis[0].eliminationPower > totalWords * 0.3) {
-          pillars.push({
-            position: pos,
-            pattern: '_'.repeat(pos) + '?' + '_'.repeat(4 - pos),
-            eliminationPower: charAnalysis[0].eliminationPower,
-            suggestedChars: charAnalysis.slice(0, 3)
-          });
-        }
-      }
-    }
-
-    return pillars.sort((a, b) => b.eliminationPower - a.eliminationPower).slice(0, 2);
-  }, [gameState.possibleWords, gameState.guesses.length]);
-
-  // Generate pillar-focused suggestions
-  const getPillarSuggestions = useMemo(() => {
-    if (detectPillars.length === 0) return [];
-
-    return detectPillars.map(pillar => {
-      // Find words that use the best elimination characters
-      const bestChar = pillar.suggestedChars[0].char;
-      const pillarWords = gameState.possibleWords
-        .filter(word => word[pillar.position] === bestChar)
-        .map(word => ({ word, score: scoreWord(word) }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 2);
-
-      return {
-        ...pillar,
-        words: pillarWords
-      };
-    });
-  }, [detectPillars, scoreWord, gameState.possibleWords]);
 
   const handleVirtualKey = (key: string) => {
     if (gameState.isGameOver) return;

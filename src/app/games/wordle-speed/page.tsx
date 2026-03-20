@@ -80,8 +80,8 @@ export default function SpeedWordle() {
       }
     });
 
-    guessLetters.forEach((letter, index) => {
-      if (result[index] === 'empty' && targetLetters.includes(letter as string)) {
+    guessLetters.forEach((letter) => {
+      if (targetLetters.includes(letter as string)) {
         result[index] = 'present';
         const targetIndex = targetLetters.indexOf(letter);
         if (targetIndex !== -1) {
