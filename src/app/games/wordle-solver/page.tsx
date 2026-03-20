@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 
 export type LetterState = 'correct' | 'present' | 'absent' | 'empty';
@@ -302,36 +302,41 @@ export default function WordleSolver() {
     return frequency;
   };
 
-  const getTopLetters = () => {
+  const topLetters = useMemo(() => {
     const frequency = getLetterFrequency();
     return Object.entries(frequency)
       .sort(([,a], [,b]) => b - a)
       .slice(0, 10)
       .map(([letter, count]) => ({ letter, count, percentage: (count / gameState.possibleWords.length * 100).toFixed(1) }));
-  };
+  }, [gameState.possibleWords]);
 
-  // Score words by letter coverage for suggestions
-  const scoreWord = (word: string, possibleWords: string[]): number => {
+  // Memoized letter frequency for scoring
+  const letterFrequencyForScoring = useMemo(() => {
     const freq: Record<string, number> = {};
-    possibleWords.forEach((w) => {
+    gameState.possibleWords.forEach((w) => {
       [...new Set(w.split(""))].forEach((l) => {
         freq[l] = (freq[l] || 0) + 1;
       });
     });
-    return [...new Set(word.split(""))].reduce((sum, l) => sum + (freq[l] || 0), 0);
-  };
+    return freq;
+  }, [gameState.possibleWords]);
 
-  const getSuggestedWords = () => {
+  // Score words by letter coverage for suggestions
+  const scoreWord = useCallback((word: string): number => {
+    return [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0);
+  }, [letterFrequencyForScoring]);
+
+  const suggestedWords = useMemo(() => {
     if (gameState.possibleWords.length <= 5) {
       return gameState.possibleWords.map(word => ({ word, score: 0 }));
     }
     
     const scored = gameState.possibleWords
-      .map(word => ({ word, score: scoreWord(word, gameState.possibleWords) }))
+      .map(word => ({ word, score: scoreWord(word) }))
       .sort((a, b) => b.score - a.score);
     
     return scored.slice(0, 5);
-  };
+  }, [gameState.possibleWords, scoreWord]);
 
   const handleVirtualKey = (key: string) => {
     if (gameState.isGameOver) return;
@@ -456,7 +461,7 @@ export default function WordleSolver() {
               <div className="mt-2">
                 <div className="text-xs text-gray-400 mb-1">Top Letters in Possible Words:</div>
                 <div className="flex flex-wrap gap-1 justify-center">
-                  {getTopLetters().map(({ letter, percentage }) => (
+                  {topLetters.map(({ letter, percentage }: { letter: string; percentage: string }) => (
                     <div key={letter} className="bg-purple-600/30 text-purple-200 text-xs px-1 py-0.5 rounded">
                       {letter} ({percentage}%)
                     </div>
@@ -478,7 +483,7 @@ export default function WordleSolver() {
                 {gameState.possibleWords.length > 5 && `${gameState.possibleWords.length} words left`}
               </div>
               <div className="flex flex-wrap gap-2 justify-center">
-                {getSuggestedWords().map(({ word, score }, index) => (
+                {suggestedWords.map(({ word, score }: { word: string; score: number }, index: number) => (
                   <button
                     key={word}
                     onClick={() => setGameState(prev => ({ ...prev, currentGuess: word }))}
