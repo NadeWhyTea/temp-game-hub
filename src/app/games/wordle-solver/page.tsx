@@ -331,21 +331,12 @@ export default function WordleSolver() {
 
   const toggleStrategyMode = () => {
     setGameState(prev => ({ ...prev, strategyMode: prev.strategyMode === 'conservative' ? 'aggressive' : 'conservative' }));
-    // Refresh game with new strategy
-    setTimeout(() => {
-      initializeGame(gameState.useTodayWord);
-    }, 100);
   };
 
-  const toggleWordSource = () => {
-    setGameState(prev => {
-      const newSource = prev.wordSource === 'nyt-api' ? 'wordle-api' : 'nyt-api';
-      return { ...prev, wordSource: newSource };
-    });
-    // Refresh game with new word source
-    setTimeout(() => {
-      initializeGame(gameState.useTodayWord);
-    }, 100);
+  const toggleWordSource = async () => {
+    const newSource = gameState.wordSource === 'nyt-api' ? 'wordle-api' : 'nyt-api';
+    const newState = await createWordleGame(gameState.useTodayWord, gameState.strategyMode, newSource);
+    setGameState(newState);
   };
 
   const resetGame = () => {
