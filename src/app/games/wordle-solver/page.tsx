@@ -226,7 +226,7 @@ export default function WordleSolver() {
 
   useEffect(() => {
     initializeGame('conservative');
-  }, [initializeGame]);
+  }, []);
 
   const keyboardState = getKeyboardState(gameState.guesses);
 
