@@ -76,15 +76,15 @@ async function fetchNYTWordleWord(): Promise<string> {
     const sources = [
       {
         url: 'https://api.frontendmasters.com/v1/wordle',
-        parser: (data: any) => data?.word,
+        parser: (data: { word?: string }) => data?.word,
       },
       {
         url: 'https://wordle-api.vercel.app/word',
-        parser: (data: any) => data?.word,
+        parser: (data: { word?: string }) => data?.word,
       },
       {
         url: 'https://www.nytimes.com/svc/wordle/v2/answers.json',
-        parser: (data: any) => {
+        parser: (data: { results?: Array<{ word?: string }> }) => {
           // Get the most recent word from NYT API
           if (data.results && data.results.length > 0) {
             const latest = data.results[data.results.length - 1];
@@ -95,7 +95,7 @@ async function fetchNYTWordleWord(): Promise<string> {
       },
       {
         url: 'https://api.jsonbin.io/v3/b/60f8b8c9e4b6641b0a8b8b8c',
-        parser: (data: any) => {
+        parser: (data: { record?: Record<string, string> }) => {
           // Alternative JSONBin source
           const today = new Date().toISOString().split('T')[0];
           return data.record?.[today];
@@ -334,7 +334,7 @@ export default function WordleSolver() {
   });
   const [showTarget, setShowTarget] = useState(false);
 
-  const initializeGame = async () => {
+  const initializeGame = useCallback(async () => {
     console.log('initializeGame called - current mode:', gameState.gameMode, 'current word:', gameState.targetWord);
     try {
       const newState = await createWordleGame(gameState.gameMode, gameState.strategyMode);
@@ -365,7 +365,7 @@ export default function WordleSolver() {
         gameStats: null,
       });
     }
-  };
+  }, [gameState.gameMode, gameState.strategyMode, gameState.targetWord]);
 
   // Initialize game on mount
   useEffect(() => {
@@ -373,7 +373,7 @@ export default function WordleSolver() {
       await initializeGame();
     };
     initGame();
-  }, []);
+  }, [initializeGame]);
 
   const keyboardState = getKeyboardState(gameState.guesses);
 
@@ -465,7 +465,7 @@ export default function WordleSolver() {
       .sort(([,a], [,b]) => b - a)
       .slice(0, 10)
       .map(([letter, count]) => ({ letter, count, percentage: (count / gameState.possibleWords.length * 100).toFixed(1) }));
-  }, [gameState.possibleWords]);
+  }, [getLetterFrequency, gameState.possibleWords]);
 
   // Memoized letter frequency for scoring
   const letterFrequencyForScoring = useMemo(() => {
@@ -491,7 +491,9 @@ export default function WordleSolver() {
       // Bonus for words with common letters in high-frequency positions
       const positionBonus = word.split('').reduce((bonus, letter, pos) => {
         const posFrequency = letterFrequencyForScoring[letter] || 0;
-        return bonus + (posFrequency > gameState.possibleWords.length * 0.15 ? 100 : 0);
+        // Higher bonus for letters in earlier positions (0, 1, 2)
+        const positionWeight = pos <= 2 ? 1.5 : 1;
+        return bonus + (posFrequency > gameState.possibleWords.length * 0.15 ? 100 * positionWeight : 0);
       }, 0);
       
       return baseScore + uniquenessBonus + positionBonus;
@@ -791,7 +793,7 @@ export default function WordleSolver() {
               <div className="text-xs text-gray-400 mb-2">
                 Strategic positions to eliminate many words
               </div>
-              {getPillarSuggestions.map((pillar, index) => (
+              {getPillarSuggestions.map((pillar) => (
                 <div key={pillar.position} className="mb-3">
                   <div className="text-xs text-yellow-400 mb-1">
                     Position {pillar.position + 1}: {pillar.pattern} 
