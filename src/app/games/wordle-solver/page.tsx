@@ -399,6 +399,12 @@ export default function WordleSolver() {
 
   const handleKeyPress = useCallback(
     (e: KeyboardEvent) => {
+      // Prevent Enter key from triggering button clicks
+      if (e.key === "Enter" && document.activeElement?.tagName === "BUTTON") {
+        e.preventDefault();
+        return;
+      }
+
       if (gameState.isGameOver) return;
 
       if (e.key === "Enter") {
@@ -421,12 +427,16 @@ export default function WordleSolver() {
 
   const toggleStrategyMode = () => {
     setGameState(prev => ({ ...prev, strategyMode: prev.strategyMode === 'conservative' ? 'aggressive' : 'conservative' }));
+    // Remove focus from button to prevent Enter key from triggering it again
+    (document.activeElement as HTMLElement)?.blur();
   };
 
   const toggleGameMode = async () => {
     const newMode = gameState.gameMode === 'nyt-daily' ? 'free-play' : 'nyt-daily';
     const newState = await createWordleGame(newMode, gameState.strategyMode);
     setGameState(newState);
+    // Remove focus from button to prevent Enter key from triggering it again
+    (document.activeElement as HTMLElement)?.blur();
   };
 
   const resetGame = async () => {
@@ -444,12 +454,16 @@ export default function WordleSolver() {
     const newState = await createWordleGame(currentMode, currentStrategy);
     setGameState(newState);
     setShowTarget(false);
+    // Remove focus from button to prevent Enter key from triggering it again
+    (document.activeElement as HTMLElement)?.blur();
   };
 
   const continueToFreePlay = async () => {
     const currentStrategy = gameState.strategyMode;
     const newState = await createWordleGame('free-play', currentStrategy);
     setGameState(newState);
+    // Remove focus from button to prevent Enter key from triggering it again
+    (document.activeElement as HTMLElement)?.blur();
   };
 
   const getLetterColor = (state: LetterState): string => {
@@ -793,7 +807,11 @@ export default function WordleSolver() {
                 {suggestedWords.map(({ word, score }: { word: string; score: number }, index: number) => (
                   <button
                     key={word}
-                    onClick={() => setGameState(prev => ({ ...prev, currentGuess: word }))}
+                    onClick={() => {
+                      setGameState(prev => ({ ...prev, currentGuess: word }));
+                      // Remove focus from button to prevent Enter key from triggering it again
+                      (document.activeElement as HTMLElement)?.blur();
+                    }}
                     className={`px-2 py-1 text-xs font-semibold rounded transition-colors ${
                       index === 0 && gameState.possibleWords.length > 5
                         ? "bg-purple-600 text-white"
@@ -832,7 +850,11 @@ export default function WordleSolver() {
                     {pillar.words.map(({ word, score }) => (
                       <button
                         key={word}
-                        onClick={() => setGameState(prev => ({ ...prev, currentGuess: word }))}
+                        onClick={() => {
+                          setGameState(prev => ({ ...prev, currentGuess: word }));
+                          // Remove focus from button to prevent Enter key from triggering it again
+                          (document.activeElement as HTMLElement)?.blur();
+                        }}
                         className="px-2 py-1 text-xs font-semibold rounded bg-red-600/30 text-red-200 hover:bg-red-600/50 transition-colors"
                       >
                         {word}
@@ -852,13 +874,17 @@ export default function WordleSolver() {
               {row.map((key) => (
                 <button
                   key={key}
-                  onClick={() => handleVirtualKey(key)}
+                  onClick={() => {
+                    handleVirtualKey(key);
+                    // Remove focus from button to prevent Enter key from triggering it again
+                    (document.activeElement as HTMLElement)?.blur();
+                  }}
                   className={`px-1 py-2 rounded font-semibold text-xs transition-colors ${getKeyboardKeyColor(
                     key
                   )} ${
-                    key === "ENTER" || key === "BACK"
-                      ? "px-2 text-xs"
-                      : "px-2"
+                    key === 'ENTER'
+                      ? 'px-4'
+                      : ''
                   }`}
                 >
                   {key === "BACK" ? "⌫" : key}
