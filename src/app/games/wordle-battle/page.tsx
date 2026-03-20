@@ -38,8 +38,6 @@ export default function WordleBattle() {
         const data = await response.json();
         // Support both a plain array and an object with a "words" or "answers" key
         const fiveLetterWords = Array.isArray(data) ? data : (data.words ?? data.answers ?? []);
-          .map((word: string) => word.toUpperCase())
-          .filter((word: string) => word.length === 5);
         setWords(fiveLetterWords);
       } catch (error) {
         console.error("Error loading words:", error);
@@ -329,4 +327,152 @@ export default function WordleBattle() {
       </main>
     );
   }
-}
+
+  return (
+    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center p-4">
+      <div className="max-w-4xl w-full">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-white mb-2">Wordle Battle</h1>
+          <p className="text-gray-300">Difficulty: <span className="capitalize font-bold">{difficulty}</span></p>
+        </div>
+
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8 border border-white/20">
+          <div className="text-center">
+            <div className="text-6xl mb-6">⚔️</div>
+            <h2 className="text-2xl font-bold text-white mb-4">Game Screen</h2>
+            
+            {gameOver && (
+              <div className="mb-6">
+                <h3 className="text-xl font-bold mb-2">
+                  {gameWon ? "You Win!" : "Game Over!"}
+                </h3>
+                <p className="text-lg mb-4">
+                  The word was: <span className="font-bold text-green-400">{targetWord}</span>
+                </p>
+              </div>
+            )}
+
+            {/* Two boards side by side */}
+            <div className="grid grid-cols-2 gap-8 mb-6">
+              {/* Player Board */}
+              <div>
+                <h3 className="text-lg font-bold text-white mb-2 text-center">You</h3>
+                <div className="grid grid-rows-6 gap-1">
+                  {guesses.map((guess, rowIndex) => (
+                    <div key={rowIndex} className="grid grid-cols-5 gap-1">
+                      {(rowIndex === currentRow ? currentGuess : guess).map((letterChar, colIndex) => {
+                        const isCurrentRow = rowIndex === currentRow;
+                        const letter = isCurrentRow ? letterChar : guess[colIndex];
+                        const state = !isCurrentRow && guess[colIndex] ? evaluateGuess(guess.join(''), targetWord)[colIndex] : 'absent';
+                        
+                        return (
+                          <div
+                            key={colIndex}
+                            className={`w-10 h-10 flex items-center justify-center rounded-md text-lg font-bold border-2 ${
+                              isCurrentRow 
+                                ? 'border-gray-600 bg-gray-800 text-white' 
+                                : state === 'correct' 
+                                ? 'border-green-500 bg-green-500 text-white'
+                                : state === 'present'
+                                ? 'border-yellow-500 bg-yellow-500 text-white'
+                                : 'border-gray-500 bg-gray-700 text-white'
+                            }`}
+                          >
+                            {letter || ''}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* AI Board */}
+              <div>
+                <h3 className="text-lg font-bold text-white mb-2 text-center">AI</h3>
+                <div className="grid grid-rows-6 gap-1">
+                  {aiGuesses.map((guess, rowIndex) => (
+                    <div key={rowIndex} className="grid grid-cols-5 gap-1">
+                      {(rowIndex === aiCurrentRow ? aiCurrentGuess : guess).map((letterChar, colIndex) => {
+                        const isCurrentRow = rowIndex === aiCurrentRow;
+                        const letter = isCurrentRow ? letterChar : guess[colIndex];
+                        const state = !isCurrentRow && guess[colIndex] ? evaluateGuess(guess.join(''), targetWord)[colIndex] : 'absent';
+                        
+                        return (
+                          <div
+                            key={colIndex}
+                            className={`w-10 h-10 flex items-center justify-center rounded-md text-lg font-bold border-2 ${
+                              isCurrentRow 
+                                ? 'border-gray-600 bg-gray-800 text-white' 
+                                : state === 'correct' 
+                                ? 'border-green-500 bg-green-500 text-white'
+                                : state === 'present'
+                                ? 'border-yellow-500 bg-yellow-500 text-white'
+                                : 'border-gray-500 bg-gray-700 text-white'
+                            }`}
+                          >
+                            {letter || ''}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Turn Indicator */}
+              <div className="text-center mb-6">
+                <p className="text-lg font-bold text-white">
+                  {isPlayerTurn ? "Your Turn" : "AI Thinking..."}
+                </p>
+              </div>
+
+              {/* Virtual Keyboard */}
+              <div className="keyboard mb-6">
+                {keyboardRows.map((row, rowIndex) => (
+                  <div key={rowIndex} className="flex justify-center my-1 space-x-1">
+                    {row.map((kbdKey) => (
+                      <button
+                        key={kbdKey}
+                        onClick={() => handleKeyPress(kbdKey)}
+                        disabled={!isPlayerTurn}
+                        className={`w-8 h-10 flex items-center justify-center rounded-md text-sm font-bold ${
+                          kbdKey === 'ENTER' || kbdKey === 'BACK' 
+                            ? 'w-16 bg-gray-600 text-gray-300' 
+                            : 'bg-gray-700 text-white hover:bg-gray-500 disabled:bg-gray-800 disabled:cursor-not-allowed'
+                        }`}
+                      >
+                        {kbdKey}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            
+            <div className="flex justify-center space-x-4">
+              <button
+                onClick={startGame}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+              >
+                New Game
+              </button>
+          </div>
+        
+        <div className="flex justify-center space-x-4">
+          <button
+            onClick={startGame}
+            className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+          >
+            New Game
+          </button>
+          <Link
+            href="/games/wordle"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Back to Wordle Games
+          </Link>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
