@@ -335,6 +335,7 @@ export default function WordleSolver() {
   const [showTarget, setShowTarget] = useState(false);
 
   const initializeGame = async () => {
+    console.log('initializeGame called - current mode:', gameState.gameMode, 'current word:', gameState.targetWord);
     const newState = await createWordleGame(gameState.gameMode, gameState.strategyMode);
     setGameState(newState);
   };
@@ -382,6 +383,7 @@ export default function WordleSolver() {
   };
 
   const resetGame = async () => {
+    console.log('resetGame called - current mode:', gameState.gameMode, 'current word:', gameState.targetWord);
     await initializeGame();
     setShowTarget(false);
   };
