@@ -92,9 +92,7 @@ export function evaluateGuess(guess: string, targetWord: string): LetterState[] 
     if (guessLetters[i] !== '_' && targetLetters.includes(guessLetters[i])) {
       states[i] = 'present';
       const index = targetLetters.indexOf(guessLetters[i]);
-      if (index !== -1) {
-        targetLetters[index] = '_';
-      }
+      if (index !== -1) targetLetters[index] = '_';
     }
   }
   for (let i = 0; i < 5; i++) {
@@ -220,16 +218,13 @@ export default function WordleSolver() {
       setGameState(newState);
     } catch (error) {
       console.error('initializeGame failed:', error);
-      setGameState(prev => ({
-        ...prev,
-        isLoading: false,
-      }));
+      setGameState(prev => ({ ...prev, isLoading: false }));
     }
   }, []);
 
   useEffect(() => {
     initializeGame('conservative');
-  }, []);
+  }, [initializeGame]);
 
   const keyboardState = getKeyboardState(gameState.guesses);
 
@@ -413,7 +408,7 @@ export default function WordleSolver() {
     (document.activeElement as HTMLElement)?.blur();
   };
 
-  const handleVirtualKey = (key: string) => {
+  const handleVirtualKey = useCallback((key: string) => {
     if (gameState.isGameOver) return;
     if (key === "ENTER") {
       if (gameState.currentGuess.length === 5) {
@@ -428,7 +423,23 @@ export default function WordleSolver() {
     } else {
       setGameState((prev) => addLetter(prev, key));
     }
-  };
+  }, [gameState.isGameOver, gameState.currentGuess, suggestedWords, scoreWord]);
+
+  // Single keyboard listener — defined after handleVirtualKey
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toUpperCase();
+      if (key === 'ENTER') {
+        handleVirtualKey('ENTER');
+      } else if (key === 'BACKSPACE') {
+        handleVirtualKey('BACK');
+      } else if (key.length === 1 && key >= 'A' && key <= 'Z') {
+        handleVirtualKey(key);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleVirtualKey]);
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center p-1">
