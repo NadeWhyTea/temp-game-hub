@@ -20,6 +20,7 @@ export interface WordleState {
   allWords: string[];
   isLoading: boolean;
   useTodayWord: boolean;
+  strategyMode: 'conservative' | 'aggressive';
 }
 
 // Small fallback list used only if /public/words.json fails to load
@@ -63,7 +64,7 @@ async function fetchTodayWordleWord(allWords: string[]): Promise<string> {
   return allWords[Math.floor(Math.random() * allWords.length)];
 }
 
-export async function createWordleGame(useTodayWord: boolean = true): Promise<WordleState> {
+export async function createWordleGame(useTodayWord: boolean = true, strategyMode: 'conservative' | 'aggressive' = 'conservative'): Promise<WordleState> {
   const allWords = await fetchWordList();
 
   const targetWord = useTodayWord
@@ -80,6 +81,7 @@ export async function createWordleGame(useTodayWord: boolean = true): Promise<Wo
     allWords,
     isLoading: false,
     useTodayWord,
+    strategyMode,
   };
 }
 
@@ -219,11 +221,12 @@ export default function WordleSolver() {
     allWords: [],
     isLoading: true,
     useTodayWord: true,
+    strategyMode: 'conservative',
   });
   const [showTarget, setShowTarget] = useState(false);
 
   const initializeGame = async (useTodayWord: boolean) => {
-    const newState = await createWordleGame(useTodayWord);
+    const newState = await createWordleGame(useTodayWord, gameState.strategyMode);
     setGameState(newState);
   };
 
@@ -258,6 +261,10 @@ export default function WordleSolver() {
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
   }, [handleKeyPress]);
+
+  const toggleStrategyMode = () => {
+    setGameState(prev => ({ ...prev, strategyMode: prev.strategyMode === 'conservative' ? 'aggressive' : 'conservative' }));
+  };
 
   const resetGame = () => {
     initializeGame(gameState.useTodayWord);
@@ -323,8 +330,26 @@ export default function WordleSolver() {
 
   // Score words by letter coverage for suggestions
   const scoreWord = useCallback((word: string): number => {
-    return [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0);
-  }, [letterFrequencyForScoring]);
+    if (gameState.strategyMode === 'aggressive') {
+      // Aggressive mode: Prioritize words with unique letters and high information gain
+      const uniqueLetters = new Set(word.split(''));
+      const baseScore = [...uniqueLetters].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0);
+      
+      // Bonus for words with all unique letters (max information)
+      const uniquenessBonus = uniqueLetters.size === 5 ? 500 : 0;
+      
+      // Bonus for words with common letters in high-frequency positions
+      const positionBonus = word.split('').reduce((bonus, letter, pos) => {
+        const posFrequency = letterFrequencyForScoring[letter] || 0;
+        return bonus + (posFrequency > gameState.possibleWords.length * 0.15 ? 100 : 0);
+      }, 0);
+      
+      return baseScore + uniquenessBonus + positionBonus;
+    } else {
+      // Conservative mode: Original letter coverage scoring
+      return [...new Set(word.split(""))].reduce((sum, l) => sum + (letterFrequencyForScoring[l] || 0), 0);
+    }
+  }, [letterFrequencyForScoring, gameState.strategyMode, gameState.possibleWords.length]);
 
   const suggestedWords = useMemo(() => {
     if (gameState.possibleWords.length <= 5) {
@@ -447,6 +472,21 @@ export default function WordleSolver() {
               className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
             >
               Switch to {gameState.useTodayWord ? "Free Play" : "Daily Wordle"}
+            </button>
+          </div>
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <span className="text-xs text-gray-400">
+              Strategy: {gameState.strategyMode === 'conservative' ? 'Conservative' : 'Aggressive'}
+            </span>
+            <button
+              onClick={toggleStrategyMode}
+              className={`px-2 py-1 text-white text-xs rounded transition-colors ${
+                gameState.strategyMode === 'conservative' 
+                  ? 'bg-green-600 hover:bg-green-500' 
+                  : 'bg-orange-600 hover:bg-orange-500'
+              }`}
+            >
+              Switch to {gameState.strategyMode === 'conservative' ? 'Aggressive' : 'Conservative'}
             </button>
           </div>
           
