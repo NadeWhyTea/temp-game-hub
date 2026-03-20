@@ -91,7 +91,10 @@ export function evaluateGuess(guess: string, targetWord: string): LetterState[] 
   for (let i = 0; i < 5; i++) {
     if (guessLetters[i] !== '_' && targetLetters.includes(guessLetters[i])) {
       states[i] = 'present';
-      targetLetters[targetLetters.indexOf(guessLetters[i])] = '_';
+      const index = targetLetters.indexOf(guessLetters[i]);
+      if (index !== -1) {
+        targetLetters[index] = '_';
+      }
     }
   }
   for (let i = 0; i < 5; i++) {
@@ -226,7 +229,7 @@ export default function WordleSolver() {
 
   useEffect(() => {
     initializeGame('conservative');
-  }, []);
+  }, [initializeGame]);
 
   const keyboardState = getKeyboardState(gameState.guesses);
 
