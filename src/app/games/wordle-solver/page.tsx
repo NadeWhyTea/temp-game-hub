@@ -67,61 +67,49 @@ async function fetchTodayWordleWord(allWords: string[]): Promise<string> {
 
 async function fetchNYTWordleWord(): Promise<string> {
   try {
-    // Manual override for testing - today's word is REHAB
+    // Manual override for today's correct NYT word
     const today = new Date().toISOString().split('T')[0];
     if (today === '2026-03-19') {
-      console.log('Using manual override: REHAB');
+      console.log('Using manual NYT override: REHAB');
       return 'REHAB';
     }
 
-    // Try multiple NYT API approaches
-    const apis = [
-      'https://www.nytimes.com/svc/wordle/v2/answers.json',
-      'https://www.nytimes.com/svc/wordle/v2/solutions.json'
-    ];
-
-    for (const apiUrl of apis) {
-      try {
-        const response = await fetch(apiUrl);
-        if (response.ok) {
-          const data = await response.json();
-          console.log('NYT API Response:', data); // Debug log
-          
-          // Try different ways to get today's word
-          const today = new Date();
-          const todayStr = today.toISOString().split('T')[0];
-          const yesterday = new Date(today);
-          yesterday.setDate(yesterday.getDate() - 1);
-          const yesterdayStr = yesterday.toISOString().split('T')[0];
-          
-          // Try multiple date formats and data structures
-          const attempts = [
-            () => data.results?.find((item: any) => item.print_date === todayStr)?.word,
-            () => data.results?.find((item: any) => item.print_date === yesterdayStr)?.word,
-            () => data.find?.((item: any) => item.date === todayStr)?.word,
-            () => data.find?.((item: any) => item.date === yesterdayStr)?.word,
-            () => data[0]?.word, // Fallback to most recent
-            () => data.results?.[0]?.word, // Another fallback
-          ];
-
-          for (const attempt of attempts) {
-            const word = attempt();
-            if (word && typeof word === 'string' && word.length === 5) {
-              console.log('Found NYT word:', word.toUpperCase());
-              return word.toUpperCase();
-            }
-          }
-        }
-      } catch (apiError) {
-        console.warn(`Failed with ${apiUrl}:`, apiError);
-        continue;
+    // Use a more reliable NYT Wordle source
+    const response = await fetch('https://wordle.votee.dev:8000/nyt');
+    if (response.ok) {
+      const data = await response.json();
+      console.log('NYT API Response:', data);
+      
+      if (data.word && typeof data.word === 'string' && data.word.length === 5) {
+        console.log('Found NYT word:', data.word.toUpperCase());
+        return data.word.toUpperCase();
       }
     }
   } catch (error) {
-    console.warn("All NYT API attempts failed:", error);
+    console.warn("NYT API failed:", error);
   }
   
-  console.warn("Falling back to Wordle API");
+  // Try the original NYT API as backup
+  try {
+    const response = await fetch('https://www.nytimes.com/svc/wordle/v2/answers.json');
+    if (response.ok) {
+      const data = await response.json();
+      console.log('NYT Original API Response:', data);
+      
+      // Get the most recent word (last in array)
+      if (data.results && data.results.length > 0) {
+        const latest = data.results[data.results.length - 1];
+        if (latest.word && latest.word.length === 5) {
+          console.log('Found NYT word from original API:', latest.word.toUpperCase());
+          return latest.word.toUpperCase();
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("NYT Original API failed:", error);
+  }
+  
+  console.warn("All NYT API attempts failed, falling back to Wordle API");
   // Fallback to regular Wordle API if NYT fails
   return await fetchTodayWordleWord(await fetchWordList());
 }
@@ -343,6 +331,10 @@ export default function WordleSolver() {
 
   const toggleStrategyMode = () => {
     setGameState(prev => ({ ...prev, strategyMode: prev.strategyMode === 'conservative' ? 'aggressive' : 'conservative' }));
+    // Refresh game with new strategy
+    setTimeout(() => {
+      initializeGame(gameState.useTodayWord);
+    }, 100);
   };
 
   const toggleWordSource = () => {
@@ -350,6 +342,10 @@ export default function WordleSolver() {
       const newSource = prev.wordSource === 'nyt-api' ? 'wordle-api' : 'nyt-api';
       return { ...prev, wordSource: newSource };
     });
+    // Refresh game with new word source
+    setTimeout(() => {
+      initializeGame(gameState.useTodayWord);
+    }, 100);
   };
 
   const resetGame = () => {
