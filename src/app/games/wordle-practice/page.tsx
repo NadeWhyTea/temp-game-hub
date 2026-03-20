@@ -50,7 +50,7 @@ const WordlePracticePage = () => {
     if (words.length > 0 && !currentWord) {
       startNewGame();
     }
-  }, [words, currentWord]);
+  }, [words, currentWord, startNewGame]);
 
   useEffect(() => {
     localStorage.setItem("wordle-practice-stats", JSON.stringify(stats));

@@ -1,325 +1,277 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 
 const defaultWords = ['ABOUT', 'CRANE', 'STARE', 'LIGHT', 'MONEY'];
 
 type Difficulty = 'easy' | 'medium' | 'hard';
+type LetterState = 'correct' | 'present' | 'absent' | 'empty';
+
+interface EvaluatedGuess {
+  word: string;
+  states: LetterState[];
+}
 
 export default function WordleBattle() {
   const [words, setWords] = useState<string[]>([]);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [gameStarted, setGameStarted] = useState(false);
   const [targetWord, setTargetWord] = useState('');
-  const [guesses, setGuesses] = useState<string[][]>(Array(6).fill([]));
+
+  // Player state
+  const [playerGuesses, setPlayerGuesses] = useState<EvaluatedGuess[]>([]);
   const [currentGuess, setCurrentGuess] = useState<string[]>([]);
-  const [currentRow, setCurrentRow] = useState<number>(0);
-  const [gameOver, setGameOver] = useState<boolean>(false);
-  const [gameWon, setGameWon] = useState<boolean>(false);
-  
+  const [playerGameOver, setPlayerGameOver] = useState(false);
+  const [playerWon, setPlayerWon] = useState(false);
+
   // AI state
-  const [aiGuesses, setAiGuesses] = useState<string[][]>(Array(6).fill([]));
-  const [aiCurrentGuess, setAiCurrentGuess] = useState<string[]>([]);
-  const [aiCurrentRow, setAiCurrentRow] = useState<number>(0);
-  const [aiGameOver, setAiGameOver] = useState<boolean>(false);
-  const [aiGameWon, setAiGameWon] = useState<boolean>(false);
-  const [isPlayerTurn, setIsPlayerTurn] = useState<boolean>(true);
+  const [aiGuesses, setAiGuesses] = useState<EvaluatedGuess[]>([]);
   const [aiPossibleWords, setAiPossibleWords] = useState<string[]>([]);
-  
-  const router = useRouter();
+  const [aiGameOver, setAiGameOver] = useState(false);
+  const [aiWon, setAiWon] = useState(false);
+  const [isPlayerTurn, setIsPlayerTurn] = useState(true);
+
+  const bothDone = playerGameOver && aiGameOver;
 
   useEffect(() => {
-    // Load words from /words.json
     const loadWords = async () => {
       try {
         const response = await fetch("/words.json");
         const data = await response.json();
-        // Support both a plain array and an object with a "words" or "answers" key
-        const fiveLetterWords = Array.isArray(data) ? data : (data.words ?? data.answers ?? []);
-        setWords(fiveLetterWords);
-      } catch (error) {
-        console.error("Error loading words:", error);
+        const list = Array.isArray(data) ? data : (data.words ?? data.answers ?? []);
+        const five = list.map((w: string) => w.toUpperCase()).filter((w: string) => w.length === 5);
+        setWords(five.length > 0 ? five : defaultWords);
+      } catch {
         setWords(defaultWords);
       }
     };
     loadWords();
   }, []);
 
-  const startGame = () => {
-    if (words.length === 0) return;
-    const randomIndex = Math.floor(Math.random() * words.length);
-    setTargetWord(words[randomIndex]);
-    
-    // Reset player state
-    setGuesses(Array(6).fill([]));
-    setCurrentGuess([]);
-    setCurrentRow(0);
-    setGameOver(false);
-    setGameWon(false);
-    
-    // Reset AI state
-    setAiGuesses(Array(6).fill([]));
-    setAiCurrentGuess([]);
-    setAiCurrentRow(0);
-    setAiGameOver(false);
-    setAiGameWon(false);
-    setIsPlayerTurn(true);
-    setAiPossibleWords(words.filter(word => word !== words[randomIndex]));
-    
-    setGameStarted(true);
-  };
-
-  // AI scoring function
-  const scoreWord = (word: string, possibleWords: string[]): number => {
-    const freq: Record<string, number> = {};
-    possibleWords.forEach((w) => {
-      [...new Set(w.split(''))].forEach((l) => {
-        freq[l] = (freq[l] || 0) + 1;
-      });
-    });
-    return [...new Set(word.split(''))].reduce((sum, l) => sum + (freq[l] || 0), 0);
-  };
-
-  // AI turn logic
-  const aiMakeGuess = () => {
-    if (aiPossibleWords.length === 0) return;
-    
-    let selectedWord: string;
-    
-    if (difficulty === 'easy') {
-      // Easy: picks randomly from remaining possible words
-      const randomIndex = Math.floor(Math.random() * aiPossibleWords.length);
-      selectedWord = aiPossibleWords[randomIndex];
-    } else if (difficulty === 'medium') {
-      // Medium: scores all remaining words, picks randomly from top 10
-      const scoredWords = aiPossibleWords.map(word => ({
-        word,
-        score: scoreWord(word, aiPossibleWords)
-      })).sort((a, b) => b.score - a.score);
-      const topWords = scoredWords.slice(0, 10);
-      const randomIndex = Math.floor(Math.random() * topWords.length);
-      selectedWord = topWords[randomIndex].word;
-    } else {
-      // Hard: scores all remaining words, always picks top scoring word but with 20% chance to pick from top 5
-      const scoredWords = aiPossibleWords.map(word => ({
-        word,
-        score: scoreWord(word, aiPossibleWords)
-      })).sort((a, b) => b.score - a.score);
-      
-      if (Math.random() < 0.2) {
-        // 20% chance: pick from top 5
-        const topWords = scoredWords.slice(0, 5);
-        const randomIndex = Math.floor(Math.random() * topWords.length);
-        selectedWord = topWords[randomIndex].word;
-      } else {
-        // 80% chance: pick top scoring word
-        selectedWord = scoredWords[0].word;
-      }
-    }
-    
-    // Update AI guess
-    const newAiGuesses = [...aiGuesses];
-    newAiGuesses[aiCurrentRow] = selectedWord.split('');
-    setAiGuesses(newAiGuesses);
-    setAiCurrentGuess(selectedWord.split(''));
-    
-    // Simulate thinking delay
-    setTimeout(() => {
-      setIsPlayerTurn(true);
-    }, 800);
-  };
-
-  const evaluateGuess = (guess: string, target: string): ('correct' | 'present' | 'absent')[] => {
-    const result: ('correct' | 'present' | 'absent')[] = Array(target.length).fill('absent');
+  const evaluateGuess = (guess: string, target: string): LetterState[] => {
+    const states: LetterState[] = Array(5).fill('absent');
     const targetLetters = target.split('');
     const guessLetters = guess.split('');
 
-    // Mark correct letters first
-    for (let i = 0; i < target.length; i++) {
+    for (let i = 0; i < 5; i++) {
       if (guessLetters[i] === targetLetters[i]) {
-        result[i] = 'correct';
+        states[i] = 'correct';
         targetLetters[i] = '_';
         guessLetters[i] = '_';
       }
     }
-
-    // Mark present letters
-    for (let i = 0; i < target.length; i++) {
+    for (let i = 0; i < 5; i++) {
       if (guessLetters[i] !== '_' && targetLetters.includes(guessLetters[i])) {
-        result[i] = 'present';
-        const targetIndex = targetLetters.indexOf(guessLetters[i]);
-        if (targetIndex !== -1) {
-          targetLetters[targetIndex] = '_';
-        }
+        states[i] = 'present';
+        targetLetters[targetLetters.indexOf(guessLetters[i])] = '_';
       }
     }
-
-    return result;
+    return states;
   };
 
-  const handleKeyPress = useCallback(
-    (pressedKey: string) => {
-      // Handle AI turn
-      if (!isPlayerTurn && !gameOver && gameStarted) {
-        return; // AI is thinking, don't allow input
-      }
-
-      if (gameOver || !gameStarted) return;
-
-      if (pressedKey === 'ENTER') {
-        if (isPlayerTurn) {
-          // Player's turn
-          if (currentGuess.length !== 5) return;
-          if (!words.includes(currentGuess.join(''))) {
-            alert('Not a valid word!');
-            return;
+  const filterWords = (possible: string[], guesses: EvaluatedGuess[]): string[] => {
+    return possible.filter(word => {
+      for (const g of guesses) {
+        for (let i = 0; i < 5; i++) {
+          const gl = g.word[i];
+          const wl = word[i];
+          const s = g.states[i];
+          if (s === 'correct' && wl !== gl) return false;
+          if (s === 'absent' && word.includes(gl)) {
+            const hasPresent = g.states.some((st, j) => st === 'present' && g.word[j] === gl);
+            if (!hasPresent) return false;
           }
-
-          const newGuesses = [...guesses];
-          newGuesses[currentRow] = currentGuess;
-          setGuesses(newGuesses);
-
-          if (currentGuess.join('') === targetWord) {
-            setGameWon(true);
-            setGameOver(true);
-          } else if (currentRow === 5) {
-            setGameOver(true);
-          } else {
-            setCurrentRow((prevRow) => prevRow + 1);
-            setCurrentGuess([]);
-          }
-
-          // Filter AI possible words based on player's guess
-          const newAiPossibleWords = aiPossibleWords.filter(word => {
-            for (let i = 0; i < 5; i++) {
-              const guessLetter = currentGuess[i];
-              const targetLetter = targetWord[i];
-              const wordLetter = word[i];
-              
-              if (guessLetter === targetLetter && wordLetter !== targetLetter) {
-                return false; // Word has letter in correct position but Player's guess was wrong
-              }
-              if (guessLetter === targetLetter && wordLetter !== targetLetter) {
-                return false; // Word has letter in wrong position but Player's guess had it there
-              }
-            }
-            return true;
-          });
-          setAiPossibleWords(newAiPossibleWords);
-
-          // Switch to AI turn
-          setIsPlayerTurn(false);
-          setTimeout(() => {
-            aiMakeGuess();
-          }, 800);
+          if (s === 'present' && !word.includes(gl)) return false;
+          if (s === 'present' && wl === gl) return false;
         }
-      } else if (pressedKey === 'BACK') {
-        setCurrentGuess((prevGuess) => prevGuess.slice(0, -1));
-      } else if (currentGuess.length < 5 && pressedKey.length === 1 && pressedKey >= 'A' && pressedKey <= 'Z') {
-        setCurrentGuess((prevGuess) => [...prevGuess, pressedKey]);
       }
-    },
-    [isPlayerTurn, gameOver, gameStarted, currentGuess, currentRow, targetWord, aiPossibleWords]
-  );
+      return true;
+    });
+  };
+
+  const scoreWord = (word: string, possible: string[]): number => {
+    const freq: Record<string, number> = {};
+    possible.forEach(w => [...new Set(w.split(''))].forEach(l => { freq[l] = (freq[l] || 0) + 1; }));
+    return [...new Set(word.split(''))].reduce((sum, l) => sum + (freq[l] || 0), 0);
+  };
+
+  const pickAiWord = (possible: string[], diff: Difficulty): string => {
+    if (diff === 'easy') {
+      return possible[Math.floor(Math.random() * possible.length)];
+    }
+    const scored = [...possible].sort((a, b) => scoreWord(b, possible) - scoreWord(a, possible));
+    if (diff === 'medium') {
+      const top = scored.slice(0, 10);
+      return top[Math.floor(Math.random() * top.length)];
+    }
+    // hard
+    if (Math.random() < 0.2) {
+      const top = scored.slice(0, 5);
+      return top[Math.floor(Math.random() * top.length)];
+    }
+    return scored[0];
+  };
+
+  const startGame = useCallback(() => {
+    if (words.length === 0) return;
+    const word = words[Math.floor(Math.random() * words.length)];
+    setTargetWord(word);
+    setPlayerGuesses([]);
+    setCurrentGuess([]);
+    setPlayerGameOver(false);
+    setPlayerWon(false);
+    setAiGuesses([]);
+    setAiPossibleWords([...words]);
+    setAiGameOver(false);
+    setAiWon(false);
+    setIsPlayerTurn(true);
+    setGameStarted(true);
+  }, [words]);
+
+  // AI takes its turn after player submits
+  const runAiTurn = useCallback((currentAiGuesses: EvaluatedGuess[], currentPossible: string[], target: string) => {
+    if (currentAiGuesses.length >= 6) {
+      setAiGameOver(true);
+      setIsPlayerTurn(true);
+      return;
+    }
+
+    const possible = filterWords(currentPossible, currentAiGuesses);
+    if (possible.length === 0) {
+      setAiGameOver(true);
+      setIsPlayerTurn(true);
+      return;
+    }
+
+    const aiWord = pickAiWord(possible, difficulty);
+    const states = evaluateGuess(aiWord, target);
+    const newGuess: EvaluatedGuess = { word: aiWord, states };
+    const newAiGuesses = [...currentAiGuesses, newGuess];
+
+    setAiGuesses(newAiGuesses);
+    setAiPossibleWords(possible);
+
+    const won = aiWord === target;
+    const over = won || newAiGuesses.length >= 6;
+
+    if (won) setAiWon(true);
+    if (over) setAiGameOver(true);
+
+    setIsPlayerTurn(true);
+  }, [difficulty]);
+
+  const handleKeyPress = useCallback((key: string) => {
+    if (!isPlayerTurn || playerGameOver || !gameStarted) return;
+
+    if (key === 'ENTER') {
+      if (currentGuess.length !== 5) return;
+      const guessWord = currentGuess.join('');
+      if (!words.includes(guessWord)) {
+        alert('Not a valid word!');
+        return;
+      }
+
+      const states = evaluateGuess(guessWord, targetWord);
+      const newGuess: EvaluatedGuess = { word: guessWord, states };
+      const newPlayerGuesses = [...playerGuesses, newGuess];
+      setPlayerGuesses(newPlayerGuesses);
+      setCurrentGuess([]);
+
+      const won = guessWord === targetWord;
+      const over = won || newPlayerGuesses.length >= 6;
+      if (won) setPlayerWon(true);
+      if (over) {
+        setPlayerGameOver(true);
+        // Still run AI turn unless AI is already done
+        if (!aiGameOver) {
+          setIsPlayerTurn(false);
+          setTimeout(() => runAiTurn(aiGuesses, aiPossibleWords, targetWord), 800);
+        }
+        return;
+      }
+
+      // Switch to AI turn
+      setIsPlayerTurn(false);
+      setTimeout(() => runAiTurn(aiGuesses, aiPossibleWords, targetWord), 800);
+
+    } else if (key === 'BACK' || key === 'BACKSPACE') {
+      setCurrentGuess(prev => prev.slice(0, -1));
+    } else if (key.length === 1 && key >= 'A' && key <= 'Z' && currentGuess.length < 5) {
+      setCurrentGuess(prev => [...prev, key]);
+    }
+  }, [isPlayerTurn, playerGameOver, gameStarted, currentGuess, words, targetWord, playerGuesses, aiGuesses, aiPossibleWords, aiGameOver, runAiTurn]);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      handleKeyPress(event.key.toUpperCase());
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
+    const onKeyDown = (e: KeyboardEvent) => handleKeyPress(e.key.toUpperCase());
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleKeyPress]);
 
-  const getTileClass = (state: 'correct' | 'present' | 'absent') => {
+  const getTileColor = (state: LetterState): string => {
     switch (state) {
-      case 'correct':
-        return 'bg-green-500 text-white';
-      case 'present':
-        return 'bg-yellow-500 text-white';
-      case 'absent':
-        return 'bg-gray-700 text-white';
-      default:
-        return 'bg-gray-800 text-gray-300';
+      case 'correct': return 'bg-green-500 border-green-500 text-white';
+      case 'present': return 'bg-yellow-500 border-yellow-500 text-white';
+      case 'absent':  return 'bg-gray-600 border-gray-600 text-white';
+      default:        return 'bg-gray-800 border-gray-600 text-gray-300';
     }
   };
 
-  const keyboardRows = [
-    ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
-    ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
-    ['ENTER', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', 'BACK'],
+  const getWinnerMessage = () => {
+    if (!bothDone) return null;
+    if (playerWon && aiWon) {
+      return playerGuesses.length <= aiGuesses.length ? "You Win! 🎉" : "AI Wins! 🤖";
+    }
+    if (playerWon) return "You Win! 🎉";
+    if (aiWon) return "AI Wins! 🤖";
+    return "Draw! 🤝";
+  };
+
+  const KEYBOARD_ROWS = [
+    ['Q','W','E','R','T','Y','U','I','O','P'],
+    ['A','S','D','F','G','H','J','K','L'],
+    ['ENTER','Z','X','C','V','B','N','M','BACK'],
   ];
 
   if (!gameStarted) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center p-4">
-        <div className="max-w-4xl w-full">
+        <div className="max-w-md w-full">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-white mb-2">Wordle Battle</h1>
-            <p className="text-gray-300">Choose difficulty to start playing against AI</p>
+            <p className="text-gray-300">Play against AI — same word, who solves it faster?</p>
           </div>
 
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8 border border-white/20">
-            <div className="text-center">
-              <div className="text-6xl mb-6">⚔️</div>
-              <h2 className="text-2xl font-bold text-white mb-6">Select Difficulty</h2>
-              
-              <div className="flex flex-col gap-4 mb-8">
+            <h2 className="text-xl font-bold text-white mb-6 text-center">Select Difficulty</h2>
+            <div className="flex flex-col gap-3 mb-8">
+              {(['easy', 'medium', 'hard'] as Difficulty[]).map(d => (
                 <button
-                  onClick={() => setDifficulty('easy')}
-                  className={`px-8 py-4 rounded-lg font-bold transition-all ${
-                    difficulty === 'easy'
-                      ? 'bg-green-600 text-white'
+                  key={d}
+                  onClick={() => setDifficulty(d)}
+                  className={`px-8 py-3 rounded-lg font-bold transition-all capitalize ${
+                    difficulty === d
+                      ? d === 'easy' ? 'bg-green-600 text-white'
+                        : d === 'medium' ? 'bg-yellow-600 text-white'
+                        : 'bg-red-600 text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
                 >
-                  Easy
+                  {d}
                 </button>
-                <button
-                  onClick={() => setDifficulty('medium')}
-                  className={`px-8 py-4 rounded-lg font-bold transition-all ${
-                    difficulty === 'medium'
-                      ? 'bg-yellow-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
-                >
-                  Medium
-                </button>
-                <button
-                  onClick={() => setDifficulty('hard')}
-                  className={`px-8 py-4 rounded-lg font-bold transition-all ${
-                    difficulty === 'hard'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
-                >
-                  Hard
-                </button>
-              </div>
-
-              <div className="mb-4">
-                <p className="text-sm text-gray-400 mb-2">Selected Difficulty:</p>
-                <p className="text-lg font-bold text-white capitalize">{difficulty}</p>
-              </div>
-
-              <button
-                onClick={startGame}
-                disabled={words.length === 0}
-                className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg transition-colors"
-              >
-                Start Game
-              </button>
+              ))}
             </div>
+            <button
+              onClick={startGame}
+              disabled={words.length === 0}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg transition-colors"
+            >
+              {words.length === 0 ? 'Loading...' : 'Start Battle'}
+            </button>
           </div>
 
-          <div className="text-center mt-8">
-            <Link
-              href="/games/wordle"
-              className="text-gray-400 hover:text-white transition-colors"
-            >
+          <div className="text-center mt-6">
+            <Link href="/games/wordle" className="text-gray-400 hover:text-white transition-colors">
               ← Back to Wordle Games
             </Link>
           </div>
@@ -328,151 +280,122 @@ export default function WordleBattle() {
     );
   }
 
+  const renderBoard = (guessHistory: EvaluatedGuess[], isPlayer: boolean) => {
+    const activeRow = guessHistory.length;
+    return (
+      <div className="grid grid-rows-6 gap-1">
+        {Array.from({ length: 6 }).map((_, rowIndex) => {
+          const completedGuess = guessHistory[rowIndex];
+          const isActive = isPlayer && rowIndex === activeRow && !playerGameOver;
+          return (
+            <div key={rowIndex} className="grid grid-cols-5 gap-1">
+              {Array.from({ length: 5 }).map((_, colIndex) => {
+                const letter = completedGuess
+                  ? completedGuess.word[colIndex]
+                  : isActive
+                  ? currentGuess[colIndex] || ''
+                  : '';
+                const state: LetterState = completedGuess ? completedGuess.states[colIndex] : 'empty';
+                return (
+                  <div
+                    key={colIndex}
+                    className={`w-10 h-10 flex items-center justify-center rounded text-sm font-bold border-2 ${getTileColor(state)}`}
+                  >
+                    {letter}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center p-4">
-      <div className="max-w-4xl w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Wordle Battle</h1>
-          <p className="text-gray-300">Difficulty: <span className="capitalize font-bold">{difficulty}</span></p>
+    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center p-4">
+      <div className="w-full max-w-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <Link href="/games/wordle" className="text-white/70 hover:text-white transition-colors text-sm">
+            ← Back to Wordle Games
+          </Link>
+          <h1 className="text-xl font-bold text-white">Wordle Battle</h1>
+          <span className="text-xs text-gray-400 capitalize">{difficulty}</span>
         </div>
 
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8 border border-white/20">
-          <div className="text-center">
-            <div className="text-6xl mb-6">⚔️</div>
-            <h2 className="text-2xl font-bold text-white mb-4">Game Screen</h2>
-            
-            {gameOver && (
-              <div className="mb-6">
-                <h3 className="text-xl font-bold mb-2">
-                  {gameWon ? "You Win!" : "Game Over!"}
-                </h3>
-                <p className="text-lg mb-4">
-                  The word was: <span className="font-bold text-green-400">{targetWord}</span>
-                </p>
-              </div>
-            )}
-
-            {/* Two boards side by side */}
-            <div className="grid grid-cols-2 gap-8 mb-6">
-              {/* Player Board */}
-              <div>
-                <h3 className="text-lg font-bold text-white mb-2 text-center">You</h3>
-                <div className="grid grid-rows-6 gap-1">
-                  {guesses.map((guess, rowIndex) => (
-                    <div key={rowIndex} className="grid grid-cols-5 gap-1">
-                      {(rowIndex === currentRow ? currentGuess : guess).map((letterChar, colIndex) => {
-                        const isCurrentRow = rowIndex === currentRow;
-                        const letter = isCurrentRow ? letterChar : guess[colIndex];
-                        const state = !isCurrentRow && guess[colIndex] ? evaluateGuess(guess.join(''), targetWord)[colIndex] : 'absent';
-                        
-                        return (
-                          <div
-                            key={colIndex}
-                            className={`w-10 h-10 flex items-center justify-center rounded-md text-lg font-bold border-2 ${
-                              isCurrentRow 
-                                ? 'border-gray-600 bg-gray-800 text-white' 
-                                : state === 'correct' 
-                                ? 'border-green-500 bg-green-500 text-white'
-                                : state === 'present'
-                                ? 'border-yellow-500 bg-yellow-500 text-white'
-                                : 'border-gray-500 bg-gray-700 text-white'
-                            }`}
-                          >
-                            {letter || ''}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* AI Board */}
-              <div>
-                <h3 className="text-lg font-bold text-white mb-2 text-center">AI</h3>
-                <div className="grid grid-rows-6 gap-1">
-                  {aiGuesses.map((guess, rowIndex) => (
-                    <div key={rowIndex} className="grid grid-cols-5 gap-1">
-                      {(rowIndex === aiCurrentRow ? aiCurrentGuess : guess).map((letterChar, colIndex) => {
-                        const isCurrentRow = rowIndex === aiCurrentRow;
-                        const letter = isCurrentRow ? letterChar : guess[colIndex];
-                        const state = !isCurrentRow && guess[colIndex] ? evaluateGuess(guess.join(''), targetWord)[colIndex] : 'absent';
-                        
-                        return (
-                          <div
-                            key={colIndex}
-                            className={`w-10 h-10 flex items-center justify-center rounded-md text-lg font-bold border-2 ${
-                              isCurrentRow 
-                                ? 'border-gray-600 bg-gray-800 text-white' 
-                                : state === 'correct' 
-                                ? 'border-green-500 bg-green-500 text-white'
-                                : state === 'present'
-                                ? 'border-yellow-500 bg-yellow-500 text-white'
-                                : 'border-gray-500 bg-gray-700 text-white'
-                            }`}
-                          >
-                            {letter || ''}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Turn Indicator */}
-              <div className="text-center mb-6">
-                <p className="text-lg font-bold text-white">
-                  {isPlayerTurn ? "Your Turn" : "AI Thinking..."}
-                </p>
-              </div>
-
-              {/* Virtual Keyboard */}
-              <div className="keyboard mb-6">
-                {keyboardRows.map((row, rowIndex) => (
-                  <div key={rowIndex} className="flex justify-center my-1 space-x-1">
-                    {row.map((kbdKey) => (
-                      <button
-                        key={kbdKey}
-                        onClick={() => handleKeyPress(kbdKey)}
-                        disabled={!isPlayerTurn}
-                        className={`w-8 h-10 flex items-center justify-center rounded-md text-sm font-bold ${
-                          kbdKey === 'ENTER' || kbdKey === 'BACK' 
-                            ? 'w-16 bg-gray-600 text-gray-300' 
-                            : 'bg-gray-700 text-white hover:bg-gray-500 disabled:bg-gray-800 disabled:cursor-not-allowed'
-                        }`}
-                      >
-                        {kbdKey}
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            
-            <div className="flex justify-center space-x-4">
-              <button
-                onClick={startGame}
-                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
-              >
-                New Game
-              </button>
+        {/* Winner banner */}
+        {bothDone && (
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 mb-4 border border-white/20 text-center">
+            <div className="text-2xl font-bold text-white mb-1">{getWinnerMessage()}</div>
+            <div className="text-sm text-gray-300">
+              The word was <span className="font-bold text-green-400">{targetWord}</span>
+            </div>
           </div>
-        
-        <div className="flex justify-center space-x-4">
+        )}
+
+        {/* Turn indicator */}
+        {!bothDone && (
+          <div className="text-center mb-3">
+            <span className={`text-sm font-semibold px-3 py-1 rounded-full ${
+              isPlayerTurn ? 'bg-blue-600/30 text-blue-300' : 'bg-purple-600/30 text-purple-300'
+            }`}>
+              {isPlayerTurn ? 'Your Turn' : 'AI is thinking...'}
+            </span>
+          </div>
+        )}
+
+        {/* Boards */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/20">
+            <div className="text-center text-sm font-semibold text-white mb-2">
+              You {playerWon ? '✅' : playerGameOver ? '❌' : ''}
+            </div>
+            {renderBoard(playerGuesses, true)}
+          </div>
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/20">
+            <div className="text-center text-sm font-semibold text-white mb-2">
+              AI {aiWon ? '✅' : aiGameOver ? '❌' : ''}
+            </div>
+            {renderBoard(aiGuesses, false)}
+          </div>
+        </div>
+
+        {/* Keyboard */}
+        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4 border border-white/20">
+          {KEYBOARD_ROWS.map((row, rowIndex) => (
+            <div key={rowIndex} className="flex justify-center gap-1 mb-1">
+              {row.map(key => (
+                <button
+                  key={key}
+                  onClick={() => handleKeyPress(key)}
+                  disabled={!isPlayerTurn || playerGameOver}
+                  className={`py-2 rounded font-semibold text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    key === 'ENTER' || key === 'BACK' ? 'px-2 bg-gray-600 text-white' : 'px-2 bg-gray-700 text-white hover:bg-gray-500'
+                  }`}
+                >
+                  {key === 'BACK' ? '⌫' : key}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-2 justify-center">
           <button
             onClick={startGame}
-            className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold rounded transition-colors"
           >
             New Game
           </button>
           <Link
             href="/games/wordle"
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm font-semibold rounded transition-colors"
           >
-            Back to Wordle Games
+            Game Menu
           </Link>
         </div>
       </div>
-    </div>
-  </div>
-</main>
+    </main>
+  );
+}
