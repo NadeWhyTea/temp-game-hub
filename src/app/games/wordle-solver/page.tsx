@@ -155,8 +155,16 @@ export async function createWordleGame(
 
   if (gameMode === 'nyt-daily') {
     targetWord = await fetchNYTWordleWord();
+    console.log('NYT Daily Wordle - Target word:', targetWord);
   } else {
-    targetWord = allWords[Math.floor(Math.random() * allWords.length)];
+    console.log('Free Play mode - All words count:', allWords.length);
+    if (allWords.length === 0) {
+      console.warn('No words available for Free Play mode!');
+      targetWord = 'ERROR';
+    } else {
+      targetWord = allWords[Math.floor(Math.random() * allWords.length)];
+      console.log('Free Play - Selected random word:', targetWord);
+    }
   }
 
   return {
