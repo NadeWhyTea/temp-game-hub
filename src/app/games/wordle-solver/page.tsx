@@ -508,6 +508,48 @@ export default function WordleSolver() {
       .map(([letter, count]) => ({ letter, count, percentage: (count / gameState.possibleWords.length * 100).toFixed(1) }));
   }, [getLetterFrequency, gameState.possibleWords]);
 
+  // Calculate guess strength based on letter coverage and information gain
+  const calculateGuessStrength = useCallback((guess: string, remainingWords: string[]): number => {
+    if (remainingWords.length === 0) return 100;
+    
+    let eliminatedWords = 0;
+    const guessLetters = new Set(guess.split(''));
+    
+    remainingWords.forEach(word => {
+      let wouldBeEliminated = false;
+      
+      // Check if this word would be eliminated by the guess
+      for (let i = 0; i < 5; i++) {
+        const guessLetter = guess[i];
+        const wordLetter = word[i];
+        
+        // If guess letter is not in the word at all, and word has that letter elsewhere, it would be eliminated
+        if (!guessLetters.has(wordLetter)) {
+          wouldBeEliminated = true;
+          break;
+        }
+        
+        // If guess letter is in wrong position, and word has it in wrong position, it might be eliminated
+        if (guess[i] !== word[i] && guessLetters.has(wordLetter)) {
+          // This is simplified - real Wordle logic is more complex
+          wouldBeEliminated = true;
+          break;
+        }
+      }
+      
+      if (wouldBeEliminated) {
+        eliminatedWords++;
+      }
+    });
+    
+    const eliminationPercentage = (eliminatedWords / remainingWords.length) * 100;
+    
+    // Bonus for unique letters
+    const uniqueBonus = guessLetters.size === 5 ? 10 : 0;
+    
+    return Math.min(100, Math.round(eliminationPercentage + uniqueBonus));
+  }, []);
+
   // Calculate expected solve based on strategy and current guesses
   const calculateExpectedSolve = useCallback(() => {
     const guessesCount = gameState.guesses.length;
@@ -783,13 +825,13 @@ export default function WordleSolver() {
         <div className="text-center mb-4">
           <div className="flex items-center justify-center gap-3 mb-2">
             <span className="text-xs text-gray-400">
-              {gameState.gameMode === 'nyt-daily' ? 'NYT Daily Wordle' : 'Free Play'}
+              {gameState.gameMode === 'nyt-daily' ? 'Daily Wordle' : 'Free Play'}
             </span>
             <button
               onClick={toggleGameMode}
               className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
             >
-              Switch to {gameState.gameMode === 'nyt-daily' ? 'Free Play' : 'NYT Daily Wordle'}
+              Switch to {gameState.gameMode === 'nyt-daily' ? 'Free Play' : 'Daily Wordle'}
             </button>
           </div>
           <div className="flex items-center justify-center gap-3 mb-2">
@@ -810,43 +852,63 @@ export default function WordleSolver() {
           
           {gameState.isLoading && (
             <div className="text-yellow-400 text-xs mb-2">
-              Loading {gameState.gameMode === 'nyt-daily' ? "NYT Daily Wordle" : "Free Play"} word...
+              Loading {gameState.gameMode === 'nyt-daily' ? "Daily Wordle" : "Free Play"} word...
             </div>
           )}
         </div>
 
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-3 border border-white/20">
-          <div className="grid grid-rows-6 gap-1 mb-3 w-fit mx-auto">
-            {Array.from({ length: 6 }).map((_, rowIndex) => (
-              <div key={rowIndex} className="grid grid-cols-5 gap-1">
-                {Array.from({ length: 5 }).map((_, colIndex) => {
-                  const guess = gameState.guesses[rowIndex];
-                  const letter = guess
-                    ? guess.word[colIndex]
-                    : rowIndex === gameState.guesses.length
-                    ? gameState.currentGuess[colIndex] || ""
-                    : "";
-                  const state = guess
-                    ? guess.states[colIndex]
-                    : "empty";
+          <div className="flex gap-2 justify-center">
+            <div className="grid grid-rows-6 gap-1 mb-3">
+              {Array.from({ length: 6 }).map((_, rowIndex) => (
+                <div key={rowIndex} className="flex items-center gap-1">
+                  <div className="grid grid-cols-5 gap-1">
+                    {Array.from({ length: 5 }).map((_, colIndex) => {
+                      const guess = gameState.guesses[rowIndex];
+                      const letter = guess
+                        ? guess.word[colIndex]
+                        : rowIndex === gameState.guesses.length
+                        ? gameState.currentGuess[colIndex] || ""
+                        : "";
+                      const state = guess
+                        ? guess.states[colIndex]
+                        : "empty";
 
-                  return (
-                    <div
-                      key={colIndex}
-                      className={`w-12 h-12 flex items-center justify-center text-lg font-bold rounded border ${getLetterColor(
-                        state
-                      )} ${
-                        state === "empty"
-                          ? "border-gray-600"
-                          : "border-transparent"
-                      }`}
-                    >
-                      {letter}
+                      return (
+                        <div
+                          key={colIndex}
+                          className={`w-12 h-12 flex items-center justify-center text-lg font-bold rounded border ${getLetterColor(
+                            state
+                          )} ${
+                            state === "empty"
+                              ? "border-gray-600"
+                              : "border-transparent"
+                          }`}
+                        >
+                          {letter}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Strength indicator for completed guesses */}
+                  {gameState.guesses[rowIndex] && (
+                    <div className="ml-2 flex flex-col items-center justify-center">
+                      <div className="text-xs text-gray-400 mb-0.5">Strength</div>
+                      <div className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                        calculateGuessStrength(gameState.guesses[rowIndex].word, gameState.possibleWords) >= 70
+                          ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                          : calculateGuessStrength(gameState.guesses[rowIndex].word, gameState.possibleWords) >= 40
+                          ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                          : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                      }`}>
+                        {calculateGuessStrength(gameState.guesses[rowIndex].word, gameState.possibleWords)}%
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
-            ))}
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
           {(gameState.isGameOver || gameState.possibleWords.length <= 10) && (
