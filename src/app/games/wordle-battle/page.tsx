@@ -36,7 +36,8 @@ export default function WordleBattle() {
       try {
         const response = await fetch("/words.json");
         const data = await response.json();
-        const fiveLetterWords = data.words
+        // Support both a plain array and an object with a "words" or "answers" key
+        const fiveLetterWords = Array.isArray(data) ? data : (data.words ?? data.answers ?? []);
           .map((word: string) => word.toUpperCase())
           .filter((word: string) => word.length === 5);
         setWords(fiveLetterWords);
@@ -322,11 +323,10 @@ export default function WordleBattle() {
               className="text-gray-400 hover:text-white transition-colors"
             >
               ← Back to Wordle Games
-            </div>
+            </Link>
           </div>
         </div>
-      </div>
-    </main>
-  );
-}
+      </main>
+    );
+  }
 }
