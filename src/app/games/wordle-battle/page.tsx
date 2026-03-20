@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -18,6 +18,16 @@ export default function WordleBattle() {
   const [currentRow, setCurrentRow] = useState<number>(0);
   const [gameOver, setGameOver] = useState<boolean>(false);
   const [gameWon, setGameWon] = useState<boolean>(false);
+  
+  // AI state
+  const [aiGuesses, setAiGuesses] = useState<string[][]>(Array(6).fill([]));
+  const [aiCurrentGuess, setAiCurrentGuess] = useState<string[]>([]);
+  const [aiCurrentRow, setAiCurrentRow] = useState<number>(0);
+  const [aiGameOver, setAiGameOver] = useState<boolean>(false);
+  const [aiGameWon, setAiGameWon] = useState<boolean>(false);
+  const [isPlayerTurn, setIsPlayerTurn] = useState<boolean>(true);
+  const [aiPossibleWords, setAiPossibleWords] = useState<string[]>([]);
+  
   const router = useRouter();
 
   useEffect(() => {
@@ -42,12 +52,84 @@ export default function WordleBattle() {
     if (words.length === 0) return;
     const randomIndex = Math.floor(Math.random() * words.length);
     setTargetWord(words[randomIndex]);
+    
+    // Reset player state
     setGuesses(Array(6).fill([]));
     setCurrentGuess([]);
     setCurrentRow(0);
     setGameOver(false);
     setGameWon(false);
+    
+    // Reset AI state
+    setAiGuesses(Array(6).fill([]));
+    setAiCurrentGuess([]);
+    setAiCurrentRow(0);
+    setAiGameOver(false);
+    setAiGameWon(false);
+    setIsPlayerTurn(true);
+    setAiPossibleWords(words.filter(word => word !== words[randomIndex]));
+    
     setGameStarted(true);
+  };
+
+  // AI scoring function
+  const scoreWord = (word: string, possibleWords: string[]): number => {
+    const freq: Record<string, number> = {};
+    possibleWords.forEach((w) => {
+      [...new Set(w.split(''))].forEach((l) => {
+        freq[l] = (freq[l] || 0) + 1;
+      });
+    });
+    return [...new Set(word.split(''))].reduce((sum, l) => sum + (freq[l] || 0), 0);
+  };
+
+  // AI turn logic
+  const aiMakeGuess = () => {
+    if (aiPossibleWords.length === 0) return;
+    
+    let selectedWord: string;
+    
+    if (difficulty === 'easy') {
+      // Easy: picks randomly from remaining possible words
+      const randomIndex = Math.floor(Math.random() * aiPossibleWords.length);
+      selectedWord = aiPossibleWords[randomIndex];
+    } else if (difficulty === 'medium') {
+      // Medium: scores all remaining words, picks randomly from top 10
+      const scoredWords = aiPossibleWords.map(word => ({
+        word,
+        score: scoreWord(word, aiPossibleWords)
+      })).sort((a, b) => b.score - a.score);
+      const topWords = scoredWords.slice(0, 10);
+      const randomIndex = Math.floor(Math.random() * topWords.length);
+      selectedWord = topWords[randomIndex].word;
+    } else {
+      // Hard: scores all remaining words, always picks top scoring word but with 20% chance to pick from top 5
+      const scoredWords = aiPossibleWords.map(word => ({
+        word,
+        score: scoreWord(word, aiPossibleWords)
+      })).sort((a, b) => b.score - a.score);
+      
+      if (Math.random() < 0.2) {
+        // 20% chance: pick from top 5
+        const topWords = scoredWords.slice(0, 5);
+        const randomIndex = Math.floor(Math.random() * topWords.length);
+        selectedWord = topWords[randomIndex].word;
+      } else {
+        // 80% chance: pick top scoring word
+        selectedWord = scoredWords[0].word;
+      }
+    }
+    
+    // Update AI guess
+    const newAiGuesses = [...aiGuesses];
+    newAiGuesses[aiCurrentRow] = selectedWord.split('');
+    setAiGuesses(newAiGuesses);
+    setAiCurrentGuess(selectedWord.split(''));
+    
+    // Simulate thinking delay
+    setTimeout(() => {
+      setIsPlayerTurn(true);
+    }, 800);
   };
 
   const evaluateGuess = (guess: string, target: string): ('correct' | 'present' | 'absent')[] => {
@@ -78,39 +160,70 @@ export default function WordleBattle() {
     return result;
   };
 
-  const handleKeyPress = (key: string) => {
-    if (gameOver || !gameStarted) return;
-
-    if (key === 'ENTER') {
-      if (currentGuess.length !== 5) return;
-      if (!words.includes(currentGuess.join(''))) {
-        alert('Not a valid word!');
-        return;
+  const handleKeyPress = useCallback(
+    (pressedKey: string) => {
+      // Handle AI turn
+      if (!isPlayerTurn && !gameOver && gameStarted) {
+        return; // AI is thinking, don't allow input
       }
 
-      const newGuesses = [...guesses];
-      newGuesses[currentRow] = currentGuess;
-      setGuesses(newGuesses);
+      if (gameOver || !gameStarted) return;
 
-      const states = evaluateGuess(currentGuess.join(''), targetWord);
-      newGuesses[currentRow] = currentGuess;
-      setGuesses(newGuesses);
+      if (pressedKey === 'ENTER') {
+        if (isPlayerTurn) {
+          // Player's turn
+          if (currentGuess.length !== 5) return;
+          if (!words.includes(currentGuess.join(''))) {
+            alert('Not a valid word!');
+            return;
+          }
 
-      if (currentGuess.join('') === targetWord) {
-        setGameWon(true);
-        setGameOver(true);
-      } else if (currentRow === 5) {
-        setGameOver(true);
-      } else {
-        setCurrentRow((prevRow) => prevRow + 1);
-        setCurrentGuess([]);
+          const newGuesses = [...guesses];
+          newGuesses[currentRow] = currentGuess;
+          setGuesses(newGuesses);
+
+          if (currentGuess.join('') === targetWord) {
+            setGameWon(true);
+            setGameOver(true);
+          } else if (currentRow === 5) {
+            setGameOver(true);
+          } else {
+            setCurrentRow((prevRow) => prevRow + 1);
+            setCurrentGuess([]);
+          }
+
+          // Filter AI possible words based on player's guess
+          const newAiPossibleWords = aiPossibleWords.filter(word => {
+            for (let i = 0; i < 5; i++) {
+              const guessLetter = currentGuess[i];
+              const targetLetter = targetWord[i];
+              const wordLetter = word[i];
+              
+              if (guessLetter === targetLetter && wordLetter !== targetLetter) {
+                return false; // Word has letter in correct position but Player's guess was wrong
+              }
+              if (guessLetter === targetLetter && wordLetter !== targetLetter) {
+                return false; // Word has letter in wrong position but Player's guess had it there
+              }
+            }
+            return true;
+          });
+          setAiPossibleWords(newAiPossibleWords);
+
+          // Switch to AI turn
+          setIsPlayerTurn(false);
+          setTimeout(() => {
+            aiMakeGuess();
+          }, 800);
+        }
+      } else if (pressedKey === 'BACK') {
+        setCurrentGuess((prevGuess) => prevGuess.slice(0, -1));
+      } else if (currentGuess.length < 5 && pressedKey.length === 1 && pressedKey >= 'A' && pressedKey <= 'Z') {
+        setCurrentGuess((prevGuess) => [...prevGuess, pressedKey]);
       }
-    } else if (key === 'BACKSPACE') {
-      setCurrentGuess((prevGuess) => prevGuess.slice(0, -1));
-    } else if (currentGuess.length < 5 && key.length === 1 && key >= 'A' && key <= 'Z') {
-      setCurrentGuess((prevGuess) => [...prevGuess, key]);
-    }
-  };
+    },
+    [isPlayerTurn, gameOver, gameStarted, currentGuess, currentRow, targetWord, aiPossibleWords]
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -120,7 +233,7 @@ export default function WordleBattle() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleKeyPress, gameOver, gameStarted]);
+  }, [handleKeyPress]);
 
   const getTileClass = (state: 'correct' | 'present' | 'absent') => {
     switch (state) {
@@ -138,7 +251,7 @@ export default function WordleBattle() {
   const keyboardRows = [
     ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
     ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
-    ['ENTER', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', 'BACKSPACE'],
+    ['ENTER', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', 'BACK'],
   ];
 
   if (!gameStarted) {
@@ -209,103 +322,11 @@ export default function WordleBattle() {
               className="text-gray-400 hover:text-white transition-colors"
             >
               ← Back to Wordle Games
-            </Link>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center p-4">
-      <div className="max-w-4xl w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Wordle Battle</h1>
-          <p className="text-gray-300">Difficulty: <span className="capitalize font-bold">{difficulty}</span></p>
-        </div>
-
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-8 border border-white/20">
-          <div className="text-center">
-            <div className="text-6xl mb-6">⚔️</div>
-            <h2 className="text-2xl font-bold text-white mb-4">Game Screen</h2>
-            
-            {gameOver && (
-              <div className="mb-6">
-                <h3 className="text-xl font-bold mb-2">
-                  {gameWon ? "You Win!" : "Game Over!"}
-                </h3>
-                <p className="text-lg mb-4">
-                  The word was: <span className="font-bold text-green-400">{targetWord}</span>
-                </p>
-              </div>
-            )}
-
-            <div className="grid grid-rows-6 gap-1 mb-6">
-              {guesses.map((guess, rowIndex) => (
-                <div key={rowIndex} className="grid grid-cols-5 gap-1">
-                  {(rowIndex === currentRow ? currentGuess : guess).map((letterChar, colIndex) => {
-                    const isCurrentRow = rowIndex === currentRow;
-                    const letter = isCurrentRow ? letterChar : guess[colIndex];
-                    const state = !isCurrentRow && guess[colIndex] ? evaluateGuess(guess.join(''), targetWord)[colIndex] : 'absent';
-                    
-                    return (
-                      <div
-                        key={colIndex}
-                        className={`w-10 h-10 flex items-center justify-center rounded-md text-lg font-bold border-2 ${
-                          isCurrentRow 
-                            ? 'border-gray-600 bg-gray-800 text-white' 
-                            : state === 'correct' 
-                            ? 'border-green-500 bg-green-500 text-white'
-                            : state === 'present'
-                            ? 'border-yellow-500 bg-yellow-500 text-white'
-                            : 'border-gray-500 bg-gray-700 text-white'
-                        }`}
-                      >
-                        {letter || ''}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-
-            <div className="keyboard mb-6">
-              {keyboardRows.map((row, rowIndex) => (
-                <div key={rowIndex} className="flex justify-center my-1 space-x-1">
-                  {row.map((key) => (
-                    <button
-                      key={key}
-                      onClick={() => handleKeyPress(key)}
-                      className={`w-8 h-10 flex items-center justify-center rounded-md text-sm font-bold ${
-                        key === 'ENTER' || key === 'BACKSPACE' 
-                          ? 'w-16 bg-gray-600 text-gray-300' 
-                          : 'bg-gray-700 text-white hover:bg-gray-500'
-                      }`}
-                    >
-                      {key}
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-            
-            <div className="flex justify-center space-x-4">
-              <button
-                onClick={startGame}
-                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
-              >
-                New Game
-              </button>
-              <Link
-                href="/games/wordle"
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-              >
-                Back to Wordle Games
-              </Link>
             </div>
           </div>
         </div>
       </div>
     </main>
   );
+}
 }
