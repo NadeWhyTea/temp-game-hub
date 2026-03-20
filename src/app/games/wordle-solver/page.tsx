@@ -19,9 +19,14 @@ export interface WordleState {
   possibleWords: string[];
   allWords: string[];
   isLoading: boolean;
-  useTodayWord: boolean;
+  gameMode: 'nyt-daily' | 'free-play';
   strategyMode: 'conservative' | 'aggressive';
-  wordSource: 'custom' | 'wordle-api' | 'nyt-api';
+  showContinuePrompt: boolean;
+  gameStats: {
+    guessesUsed: number;
+    timeTaken: number;
+    strategyUsed: 'conservative' | 'aggressive';
+  } | null;
 }
 
 // Small fallback list used only if /public/words.json fails to load
@@ -115,25 +120,17 @@ async function fetchNYTWordleWord(): Promise<string> {
 }
 
 export async function createWordleGame(
-  useTodayWord: boolean = true, 
-  strategyMode: 'conservative' | 'aggressive' = 'conservative',
-  wordSource: 'custom' | 'wordle-api' | 'nyt-api' = 'wordle-api'
+  gameMode: 'nyt-daily' | 'free-play' = 'nyt-daily',
+  strategyMode: 'conservative' | 'aggressive' = 'conservative'
 ): Promise<WordleState> {
   const allWords = await fetchWordList();
 
   let targetWord: string;
-  let actualWordSource = wordSource;
 
-  if (useTodayWord) {
-    if (wordSource === 'nyt-api') {
-      targetWord = await fetchNYTWordleWord();
-    } else {
-      targetWord = await fetchTodayWordleWord(allWords);
-      actualWordSource = 'wordle-api';
-    }
+  if (gameMode === 'nyt-daily') {
+    targetWord = await fetchNYTWordleWord();
   } else {
     targetWord = allWords[Math.floor(Math.random() * allWords.length)];
-    actualWordSource = 'custom';
   }
 
   return {
@@ -145,9 +142,10 @@ export async function createWordleGame(
     possibleWords: [...allWords],
     allWords,
     isLoading: false,
-    useTodayWord,
+    gameMode,
     strategyMode,
-    wordSource: actualWordSource,
+    showContinuePrompt: false,
+    gameStats: null,
   };
 }
 
@@ -286,21 +284,22 @@ export default function WordleSolver() {
     possibleWords: [],
     allWords: [],
     isLoading: true,
-    useTodayWord: true,
+    gameMode: 'nyt-daily',
     strategyMode: 'conservative',
-    wordSource: 'wordle-api',
+    showContinuePrompt: false,
+    gameStats: null,
   });
   const [showTarget, setShowTarget] = useState(false);
 
-  const initializeGame = async (useTodayWord: boolean) => {
-    const newState = await createWordleGame(useTodayWord, gameState.strategyMode, gameState.wordSource);
+  const initializeGame = async () => {
+    const newState = await createWordleGame(gameState.gameMode, gameState.strategyMode);
     setGameState(newState);
   };
 
   // Initialize game on mount
   useEffect(() => {
     const initGame = async () => {
-      await initializeGame(true);
+      await initializeGame();
     };
     initGame();
   }, []);
@@ -333,20 +332,20 @@ export default function WordleSolver() {
     setGameState(prev => ({ ...prev, strategyMode: prev.strategyMode === 'conservative' ? 'aggressive' : 'conservative' }));
   };
 
-  const toggleWordSource = async () => {
-    const newSource = gameState.wordSource === 'nyt-api' ? 'wordle-api' : 'nyt-api';
-    const newState = await createWordleGame(gameState.useTodayWord, gameState.strategyMode, newSource);
+  const toggleGameMode = async () => {
+    const newMode = gameState.gameMode === 'nyt-daily' ? 'free-play' : 'nyt-daily';
+    const newState = await createWordleGame(newMode, gameState.strategyMode);
     setGameState(newState);
   };
 
-  const resetGame = () => {
-    initializeGame(gameState.useTodayWord);
+  const resetGame = async () => {
+    await initializeGame();
     setShowTarget(false);
   };
 
-  const toggleTodayWord = () => {
-    initializeGame(!gameState.useTodayWord);
-    setShowTarget(false);
+  const continueToFreePlay = async () => {
+    const newState = await createWordleGame('free-play', gameState.strategyMode);
+    setGameState(newState);
   };
 
   const getLetterColor = (state: LetterState): string => {
@@ -538,37 +537,14 @@ export default function WordleSolver() {
         <div className="text-center mb-4">
           <div className="flex items-center justify-center gap-3 mb-2">
             <span className="text-xs text-gray-400">
-              {gameState.useTodayWord 
-                ? (gameState.wordSource === 'nyt-api' ? 'NYT Daily Wordle' : 'Daily Wordle')
-                : 'Free Play'
-              }
+              {gameState.gameMode === 'nyt-daily' ? 'NYT Daily Wordle' : 'Free Play'}
             </span>
             <button
-              onClick={toggleTodayWord}
+              onClick={toggleGameMode}
               className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
             >
-              Switch to {gameState.useTodayWord ? "Free Play" : "Daily Wordle"}
+              Switch to {gameState.gameMode === 'nyt-daily' ? 'Free Play' : 'NYT Daily Wordle'}
             </button>
-            {gameState.useTodayWord && (
-              <div className="relative group">
-                <button
-                  onClick={toggleWordSource}
-                  className={`px-2 py-1 text-white text-xs rounded transition-colors ${
-                    gameState.wordSource === 'nyt-api' 
-                      ? 'bg-purple-600 hover:bg-purple-500' 
-                      : 'bg-indigo-600 hover:bg-indigo-500'
-                  }`}
-                >
-                  Switch to {gameState.wordSource === 'nyt-api' ? 'Wordle API' : 'NYT Wordle'}
-                </button>
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                  {gameState.wordSource === 'nyt-api' 
-                    ? 'Source: New York Times API' 
-                    : 'Source: Wordle.votee.dev API'
-                  }
-                </div>
-              </div>
-            )}
           </div>
           <div className="flex items-center justify-center gap-3 mb-2">
             <span className="text-xs text-gray-400">
@@ -588,7 +564,7 @@ export default function WordleSolver() {
           
           {gameState.isLoading && (
             <div className="text-yellow-400 text-xs mb-2">
-              Loading today&apos;s {gameState.wordSource === 'nyt-api' ? 'NYT ' : ''}Wordle word...
+              Loading {gameState.gameMode === 'nyt-daily' ? "NYT Daily Wordle" : "Free Play"} word...
             </div>
           )}
         </div>
@@ -646,6 +622,24 @@ export default function WordleSolver() {
                   {gameState.possibleWords.join(", ")}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Post-game analysis and continue prompt */}
+          {gameState.isGameOver && gameState.gameMode === 'nyt-daily' && (
+            <div className="bg-purple-600/20 border border-purple-400/30 rounded-lg p-3 mb-3">
+              <div className="text-center">
+                <h4 className="text-sm font-semibold text-purple-300 mb-2">Daily Complete!</h4>
+                <div className="text-xs text-gray-300 mb-2">
+                  Ready for more practice? Try Free Play mode with unlimited words.
+                </div>
+                <button
+                  onClick={continueToFreePlay}
+                  className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white text-xs rounded transition-colors"
+                >
+                  Continue to Free Play
+                </button>
+              </div>
             </div>
           )}
         </div>
