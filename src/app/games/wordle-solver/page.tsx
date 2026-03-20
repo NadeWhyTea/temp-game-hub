@@ -338,6 +338,77 @@ export default function WordleSolver() {
     return scored.slice(0, 5);
   }, [gameState.possibleWords, scoreWord]);
 
+  // Detect pillars/cliffs - character patterns that could eliminate many words
+  const detectPillars = useMemo(() => {
+    if (gameState.guesses.length === 0 || gameState.possibleWords.length <= 20) {
+      return [];
+    }
+
+    // Analyze character positions across all possible words
+    const positionAnalysis: Record<number, Record<string, number>> = {};
+    for (let pos = 0; pos < 5; pos++) {
+      positionAnalysis[pos] = {};
+      gameState.possibleWords.forEach(word => {
+        const char = word[pos];
+        positionAnalysis[pos][char] = (positionAnalysis[pos][char] || 0) + 1;
+      });
+    }
+
+    // Find pillars - positions with very diverse characters
+    const pillars: Array<{
+      position: number;
+      pattern: string;
+      eliminationPower: number;
+      suggestedChars: Array<{ char: string; coverage: number }>;
+    }> = [];
+
+    for (let pos = 0; pos < 5; pos++) {
+      const chars = Object.keys(positionAnalysis[pos]);
+      const totalWords = gameState.possibleWords.length;
+      
+      // If this position has many different characters, it's a potential pillar
+      if (chars.length >= 8) {
+        // Calculate elimination power for each character
+        const charAnalysis = chars.map(char => {
+          const coverage = positionAnalysis[pos][char];
+          const eliminationPower = totalWords - coverage;
+          return { char, coverage, eliminationPower };
+        }).sort((a, b) => b.eliminationPower - a.eliminationPower);
+
+        if (charAnalysis[0].eliminationPower > totalWords * 0.3) {
+          pillars.push({
+            position: pos,
+            pattern: '_'.repeat(pos) + '?' + '_'.repeat(4 - pos),
+            eliminationPower: charAnalysis[0].eliminationPower,
+            suggestedChars: charAnalysis.slice(0, 3)
+          });
+        }
+      }
+    }
+
+    return pillars.sort((a, b) => b.eliminationPower - a.eliminationPower).slice(0, 2);
+  }, [gameState.possibleWords, gameState.guesses.length]);
+
+  // Generate pillar-focused suggestions
+  const getPillarSuggestions = useMemo(() => {
+    if (detectPillars.length === 0) return [];
+
+    return detectPillars.map(pillar => {
+      // Find words that use the best elimination characters
+      const bestChar = pillar.suggestedChars[0].char;
+      const pillarWords = gameState.possibleWords
+        .filter(word => word[pillar.position] === bestChar)
+        .map(word => ({ word, score: scoreWord(word) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 2);
+
+      return {
+        ...pillar,
+        words: pillarWords
+      };
+    });
+  }, [detectPillars, scoreWord, gameState.possibleWords]);
+
   const handleVirtualKey = (key: string) => {
     if (gameState.isGameOver) return;
 
@@ -500,6 +571,41 @@ export default function WordleSolver() {
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pillar Detection Panel */}
+        {detectPillars.length > 0 && (
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-4 border border-white/20">
+            <div className="text-center mb-2">
+              <h3 className="text-sm font-semibold text-white mb-2">Pillar Detection</h3>
+              <div className="text-xs text-gray-400 mb-2">
+                Strategic positions to eliminate many words
+              </div>
+              {getPillarSuggestions.map((pillar, index) => (
+                <div key={pillar.position} className="mb-3">
+                  <div className="text-xs text-yellow-400 mb-1">
+                    Position {pillar.position + 1}: {pillar.pattern} 
+                    <span className="text-green-400">(-{Math.round(pillar.eliminationPower)} words)</span>
+                  </div>
+                  <div className="text-xs text-gray-400 mb-1">
+                    Best characters: {pillar.suggestedChars.map(c => `${c.char}(${c.coverage})`).join(', ')}
+                  </div>
+                  <div className="flex flex-wrap gap-1 justify-center">
+                    {pillar.words.map(({ word, score }) => (
+                      <button
+                        key={word}
+                        onClick={() => setGameState(prev => ({ ...prev, currentGuess: word }))}
+                        className="px-2 py-1 text-xs font-semibold rounded bg-red-600/30 text-red-200 hover:bg-red-600/50 transition-colors"
+                      >
+                        {word}
+                        <span className="text-xs opacity-75 ml-1">({score})</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
