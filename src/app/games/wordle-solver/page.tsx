@@ -564,20 +564,6 @@ export default function WordleSolver() {
     }
   }, [letterFrequencyForScoring, gameState.strategyMode, gameState.possibleWords.length]);
 
-  // Calculate guess strength using same scoring as suggested words
-  const calculateGuessStrength = useCallback((guess: string): number => {
-    if (gameState.possibleWords.length === 0) return 100;
-    
-    // Use the exact same scoring logic as scoreWord
-    const rawScore = scoreWord(guess);
-    
-    // Normalize to 0-100 scale based on possible max scores
-    const maxPossibleScore = gameState.strategyMode === 'aggressive' ? 2000 : 500;
-    const normalizedScore = Math.min(100, Math.round((rawScore / maxPossibleScore) * 100));
-    
-    return normalizedScore;
-  }, [gameState.possibleWords.length, scoreWord, gameState.strategyMode]);
-
   // Detect Pillar of Doom scenarios - risky first letter distributions that could cause losses
   const detectPillarOfDoom = useMemo(() => {
     if (gameState.possibleWords.length > 40) return { words: [], riskLevel: 0 }; // Only trigger when word count is manageable
@@ -694,6 +680,23 @@ export default function WordleSolver() {
     
     return baseWords.slice(0, 5);
   }, [gameState.possibleWords, scoreWord, detectPillarOfDoom]);
+
+  // Calculate guess strength using same scoring as suggested words
+  const calculateGuessStrength = useCallback((guess: string): number => {
+    if (gameState.possibleWords.length === 0) return 100;
+    
+    // Get the top suggested word's score for comparison
+    const topSuggestedWord = suggestedWords[0]?.word;
+    if (!topSuggestedWord) return 100;
+    
+    const topScore = scoreWord(topSuggestedWord);
+    const guessScore = scoreWord(guess);
+    
+    // Calculate percentage relative to top suggested word
+    const strengthPercentage = Math.round((guessScore / topScore) * 100);
+    
+    return Math.min(100, strengthPercentage);
+  }, [suggestedWords, scoreWord]);
 
   // Memoized letter frequency for statistics (different from scoring frequency)
   const detectPillars = useMemo(() => {
@@ -994,14 +997,6 @@ export default function WordleSolver() {
                         {calculateExpectedSolve()}% solve
                       </div>
                     </div>
-                    
-                    {/* Pillar detection indicator */}
-                    {detectPillarOfDoom.words.length > 0 && (
-                      <div className="mt-1 flex items-center gap-1">
-                        <div className="w-1 h-1 bg-orange-500 rounded-full"></div>
-                        <div className="text-orange-300 text-xs">Pillar detected</div>
-                      </div>
-                    )}
                   </div>
                 </div>
               ) : (
