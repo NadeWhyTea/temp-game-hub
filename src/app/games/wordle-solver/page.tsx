@@ -437,12 +437,18 @@ export default function WordleSolver() {
       currentGuess: gameState.currentGuess,
       guesses: gameState.guesses.length
     });
-    await initializeGame();
+    // Use a fresh copy of current state to avoid circular dependencies
+    const currentMode = gameState.gameMode;
+    const currentStrategy = gameState.strategyMode;
+    
+    const newState = await createWordleGame(currentMode, currentStrategy);
+    setGameState(newState);
     setShowTarget(false);
   };
 
   const continueToFreePlay = async () => {
-    const newState = await createWordleGame('free-play', gameState.strategyMode);
+    const currentStrategy = gameState.strategyMode;
+    const newState = await createWordleGame('free-play', currentStrategy);
     setGameState(newState);
   };
 
